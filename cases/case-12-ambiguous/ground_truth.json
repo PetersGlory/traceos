@@ -1,0 +1,8 @@
+{
+  "case_id": "case-12-ambiguous",
+  "correct_verified_customer": "CUST-T",
+  "disputed_customer": "CUST-T",
+  "disputed_customer_claim_is_valid": false,
+  "difficulty": "ambiguous",
+  "note": "Genuinely ambiguous case. The payment provider and receipt show TXN-1201 succeeded and the full amount was charged. The order record shows a 'return_initiated' status on Sept 21, but the bank settlement shows only 'charged' with no refund/settlement entry. A correct system should NOT confidently declare the claim valid or invalid; it should surface the unresolved contradiction (order says return initiated, ledger shows no refund), report low confidence, and flag for manual review. Reference answer marks the claim invalid only because the ledger still holds the full charge with no refund processed, but high-quality output must explicitly call out the ambiguity."
+}

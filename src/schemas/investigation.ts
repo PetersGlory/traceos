@@ -95,6 +95,8 @@ export const GroundTruth = z.object({
     })
     .optional(),
   difficulty: z.enum(["normal", "clean", "hard", "ambiguous"]),
+  /** Optional human note (e.g. why a case is ambiguous). Not used for scoring. */
+  note: z.string().optional(),
 });
 
 export type GroundTruth = z.infer<typeof GroundTruth>;
