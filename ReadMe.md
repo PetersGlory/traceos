@@ -244,6 +244,7 @@ Requires a `GEMINI_API_KEY` in `.env` (see `.env.example`). The model is set via
 npm run dev                    # run baseline + agent on one case (default case-01-demo)
 npm run dev -- cases/case-05-contradiction
 npm run eval                   # run + score both systems on all cases → results.json + comparison table
+npm run eval -- --force        # bypass the trajectory cache, re-run Gemini on every case
 npm run report:demo            # generate demo dossiers (verified + rejected) with NO API key
 npm run typecheck
 ```
@@ -257,6 +258,19 @@ For one case, `npm run dev` writes `report/<caseId>.baseline.html` and `report/<
 - prints the comparison table and writes `results.json`.
 
 The pipeline order is: **investigator → contradiction (adversarial) → verifier**, with exactly **one** verifier-triggered retry of the investigator before the verdict is handed to the human reviewer.
+
+### Free-tier quota handling
+
+Every Gemini call goes through two guards in `src/lib/`:
+
+- **Rate limiter** (`rate-limit.ts`) — spaces calls to stay under your project's free-tier RPM cap. Default `13000ms` is safe for a 5 RPM cap; tune with `GEMINI_RATE_INTERVAL_MS` in `.env`.
+- **429 retry** (`gemini-retry.ts`) — retries quota-exceeded responses with capped exponential backoff (or the API's `Retry-After` header when exposed).
+
+**Eval caching.** The per-case trajectory files double as an eval cache: a case already present under `evidence/trajectories/` is reloaded instead of re-running Gemini, so the first benchmark consumes API quota but subsequent scoring runs do not. This is a deliberate engineering choice for reproducibility, not a workaround:
+
+> The eval runner caches completed agent trajectories. The initial benchmark requires model calls; subsequent scoring runs operate entirely on cached results and do not consume API quota.
+
+To force a full re-run, pass `--force` (`npm run eval -- --force`) or set `EVAL_USE_CACHE=false` in `.env`.
 
 ---
 
