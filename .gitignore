@@ -2,10 +2,10 @@ node_modules/
 dist/
 .env
 
-# generated artifacts
-evidence/trajectories/
-report/
-results.json
+# generated artifacts (anchored to repo root so src/report/ source stays tracked)
+/evidence/trajectories/
+/report/
+/results.json
 
 # OS / editor
 .DS_Store
