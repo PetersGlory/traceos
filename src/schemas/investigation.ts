@@ -82,7 +82,7 @@ export type Verification = z.infer<typeof Verification>;
 
 /** Structured ground truth for a case — must map exactly onto Investigation fields. */
 export const GroundTruth = z.object({
-  caseId: z.string(),
+  case_id: z.string(),
   correct_verified_customer: z.string(),
   disputed_customer: z.string(),
   disputed_customer_claim_is_valid: z.boolean(),
