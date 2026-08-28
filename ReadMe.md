@@ -1,0 +1,222 @@
+# TraceOS
+
+**Evidence-driven agentic investigation infrastructure.**
+
+TraceOS answers one question: *given all this conflicting evidence, what actually happened?* It reconstructs timelines, cross-checks evidence sources against each other, actively tries to disprove its own conclusion, and verifies the result before handing it to a human reviewer.
+
+**First application:** payment and order dispute investigation.
+
+---
+
+## Table of contents
+
+- [Full vision](#full-vision)
+- [MVP scope](#mvp-scope-hackathon-build)
+- [Out of scope for MVP](#explicitly-out-of-scope-for-mvp-v2-backlog)
+- [Architecture](#architecture)
+- [Ground truth schema](#ground-truth-schema)
+- [Case set plan](#case-set-plan-1012-total)
+- [Build plan](#build-plan-24h)
+- [V2 backlog](#v2-backlog)
+
+---
+
+## Full vision
+
+Where this goes beyond the hackathon:
+
+- **Multi-source evidence ingestion** — CSV and text today; PDFs, images, and screenshots later
+- **Evidence graph** — entity relationships between evidence items, not just a flat list
+- **Multi-agent pipeline** — extraction → timeline → investigation → adversarial challenge → verification → retry-on-reject
+- **Persistent case storage** — Postgres, case history, full audit trail
+- **Analyst dashboard** — Next.js UI with an approve / reject / escalate review queue
+- **Multiple domain packs** on one shared investigation engine:
+  - Payments/order disputes (v1, this build)
+  - KYC / onboarding consistency audits (v2)
+  - Chargebacks, refund fraud, internal ops discrepancies (later)
+
+None of the Postgres/Next.js/dashboard layer is a build target right now — it's context so the MVP doesn't get architected into a corner it can't grow out of.
+
+---
+
+## MVP scope (hackathon build)
+
+**Definition of done:** a CLI tool that takes a case folder, runs baseline vs. agent pipeline on it, outputs a structured verdict plus a human-readable report, logs full trajectories, and scores itself against ground truth across 10–12 cases with real numbers in a comparison table.
+
+| Component | MVP version |
+|---|---|
+| Evidence handling | Deterministic CSV parse + one lightweight LLM call to normalize *unstructured* sources (chat, receipt text) into the same schema. No separate "Evidence Agent" over structured data — that's just parsing. |
+| Timeline | Deterministic sort by timestamp in code. No Timeline Agent. |
+| Investigator | LLM agent, structured output (`InvestigationSchema`) |
+| Contradiction / adversarial review | LLM agent, structured output, explicitly instructed to try to disprove the investigator's conclusion |
+| Verifier | LLM agent, can reject and return `approved: false`, which triggers exactly **one** retry of the investigator with the verifier's feedback appended. Capped at 1 retry — an open-ended loop is a time sink, not a reward. |
+| Report renderer | Boxed, human-readable ASCII report (see demo output below) |
+| Baseline | Single prompt, all raw evidence dumped in, forced into the *same* output schema as the agent, so scoring is apples-to-apples |
+| Eval harness | Runs both systems on all cases, scores against structured ground truth (not free-text grading), outputs a results table |
+| Trajectory logging | One JSON file per case per system: agent name → input → output → retry (if any) |
+| Cases | 10–12 synthetic cases with structured ground truth, including at least one explicitly hard/ambiguous case |
+
+### Example MVP output
+
+```
+┌──────────────────────────────────────────┐
+│ TRACEOS INVESTIGATION                    │
+├──────────────────────────────────────────┤
+│ CONCLUSION                               │
+│ Customer A's payment is NOT verified.    │
+│                                           │
+│ CONFIDENCE                               │
+│ 96%                                      │
+│                                           │
+│ KEY FINDING                              │
+│ The successful ₦250,000 transaction      │
+│ belongs to Customer B.                   │
+│                                           │
+│ CONTRADICTIONS                           │
+│ ⚠ Receipt says TXN-773 was successful    │
+│ ⚠ Provider says TXN-773 failed           │
+│                                           │
+│ EVIDENCE                                 │
+│ ✓ payment_provider.csv                   │
+│ ✓ orders.csv                             │
+│ ✓ customer_chat.txt                      │
+│ ✓ receipt.txt                            │
+└──────────────────────────────────────────┘
+```
+
+### Human checkpoint
+
+TraceOS's output is a **recommendation to a fraud/support analyst**, never an automated denial or account action. This satisfies the hackathon's ground rule that any solution which could significantly affect someone must keep a qualified human reviewer in the loop.
+
+---
+
+## Explicitly out of scope for MVP (v2 backlog)
+
+- Evidence graph visualization
+- Postgres / persistence beyond flat files
+- Next.js dashboard or any UI beyond CLI + rendered text report
+- KYC/onboarding domain pack
+- More than one verifier-triggered retry
+- PDF / image evidence ingestion
+- Multi-case batch review UI
+
+State this explicitly in the final submission under a "what we deliberately cut and why" section — it's direct evidence of the judgment the rubric asks for: *"purposeful choices matter more than the number of components."*
+
+---
+
+## Architecture
+
+```
+traceos/
+├── src/
+│   ├── agents/
+│   │   ├── investigator.agent.ts
+│   │   ├── contradiction.agent.ts
+│   │   └── verifier.agent.ts
+│   │
+│   ├── schemas/
+│   │   └── investigation.ts        # EvidenceItem, Investigation, Verification
+│   │
+│   ├── evidence/
+│   │   ├── extract-structured.ts   # deterministic CSV → EvidenceItem[]
+│   │   ├── extract-unstructured.ts # one LLM call: chat/receipt text → EvidenceItem[]
+│   │   └── build-timeline.ts       # deterministic sort, no LLM
+│   │
+│   ├── workflow/
+│   │   └── investigate.ts          # investigator → contradiction → verifier (+1 retry if rejected)
+│   │
+│   ├── report/
+│   │   └── render.ts               # boxed ASCII output
+│   │
+│   ├── data/
+│   │   └── load-case.ts
+│   │
+│   ├── baseline.ts
+│   ├── evaluate.ts
+│   └── index.ts
+│
+├── cases/                          # 10-12 synthetic cases
+│   ├── case-01-demo/
+│   │   ├── ground_truth.json       # structured, auto-scorable
+│   │   ├── orders.csv
+│   │   ├── payment_provider.csv
+│   │   ├── bank_settlement.csv
+│   │   ├── customer_chat.txt
+│   │   └── receipt.txt
+│   └── case-02.../ ... case-12.../
+│
+├── evidence/trajectories/          # generated
+├── results.json                    # generated
+├── .env.example
+├── .gitignore
+├── package.json
+├── tsconfig.json
+├── README.md
+└── REPRODUCTION.md
+```
+
+**Stack:** Node.js, TypeScript, OpenAI Agents SDK, Zod, `csv-parse`, `dotenv`.
+
+---
+
+## Ground truth schema
+
+Structured, not free text, so scoring can run unattended across baseline and agent alike.
+
+```json
+{
+  "case_id": "case-01-demo",
+  "correct_verified_customer": "CUST-B",
+  "disputed_customer": "CUST-A",
+  "disputed_customer_claim_is_valid": false,
+  "key_contradiction": {
+    "claimed_ref": "TXN-773",
+    "actual_status": "failed",
+    "real_successful_txn": "TXN-774",
+    "real_successful_customer": "CUST-B"
+  },
+  "difficulty": "normal"
+}
+```
+
+`evaluate.ts` scores by checking whether the system's structured output names the right customer, correctly flags the claim as valid/invalid, and surfaces the right contradicting transaction reference — no manual grading, no LLM-judging-LLM step.
+
+---
+
+## Case set plan (10–12 total)
+
+- **4–5 straightforward cases** — one clean contradiction each, different transaction/customer combinations
+- **3–4 clean cases** — the customer's claim actually checks out, no contradiction. These measure false-positive rate.
+- **2–3 harder cases** — multiple transactions, partial refunds, near-duplicate amounts across three customers, timestamp ordering that looks suspicious but isn't
+- **1 genuinely ambiguous case**, even to a human, with a note in the case file explaining why. This is the rubric-required "challenging case," and doubles as the best source material for the "main failure mode" section of the submission.
+
+Write these before extending agent logic further — the eval set is what turns this from a demo into a scored submission, and it's the piece most likely to get squeezed if left for later.
+
+---
+
+## Build plan (24h)
+
+| Hours | Work |
+|---|---|
+| 0–2 | Schemas, deterministic evidence/timeline code, `load-case.ts` |
+| 2–4 | Write 10–12 cases + structured `ground_truth.json` for each (reuse the demo case as case-01) |
+| 4–5 | Baseline — single prompt, same output schema as the agent |
+| 5–10 | Investigator + Contradiction + Verifier, single retry-on-reject wired up |
+| 10–12 | Report renderer (boxed format) |
+| 12–13 | Trajectory logging wired into the workflow |
+| 13–16 | `evaluate.ts` — run baseline + agent across all cases, get real numbers |
+| 16–17 | Fix whatever the numbers reveal is broken — budget this, something will be |
+| 17–20 | README: problem/user, changelog, evaluation table, failure mode, hot take, "what we cut and why" |
+| 20–22 | Record 5-min video: problem → baseline → real execution → comparison → changelog → biggest win → removed experiment |
+| 22–24 | REPRODUCTION.md, clean-clone sanity test, buffer |
+
+---
+
+## V2 backlog
+
+- KYC / onboarding consistency auditor as a second domain pack on the same core investigation engine
+- Evidence graph (visual, not just structured data)
+- Postgres persistence + case history
+- Next.js analyst dashboard with an approve/reject queue
+- Multi-retry verifier loop with escalation logic
+- PDF / screenshot evidence ingestion
