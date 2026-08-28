@@ -1,0 +1,6 @@
+PAYCO Payment Receipt
+Transaction: TXN-1201
+Customer: CUST-T
+Amount: NGN 20,000.00
+Date: 2026-09-20 11:00
+Status: SUCCESS

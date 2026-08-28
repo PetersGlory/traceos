@@ -1,0 +1,2 @@
+settlement_id,ref,amount_kobo,status,timestamp,txn_ref
+STL-12011,TXN-1201,2000000,charged,2026-09-20T11:30:00,TXN-1201

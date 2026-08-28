@@ -1,0 +1,2 @@
+txn_id,customer_id,amount_kobo,status,timestamp,provider_id
+TXN-1201,CUST-T,2000000,success,2026-09-20T11:00:00,PAYCO
