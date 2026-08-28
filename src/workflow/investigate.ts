@@ -9,7 +9,7 @@ import type {
 import { runInvestigator } from "../agents/investigator.agent.js";
 import { runContradictionReview } from "../agents/contradiction.agent.js";
 import { runVerifier } from "../agents/verifier.agent.js";
-import { writeTrajectory } from "../trace.js";
+import { hasTrajectory, readTrajectory, writeTrajectory } from "../trace.js";
 import { runBaseline } from "../baseline.js";
 
 export interface CaseContext {
@@ -24,6 +24,13 @@ export interface AgentRunResult {
   adversarialReview: ContradictionReview;
   wasRetried: boolean;
   steps: { agent: string; input: string; output: unknown; retry: boolean }[];
+}
+
+export interface InvestigateOptions {
+  systems: Array<"baseline" | "agent">;
+  trajectoriesDir: string;
+  /** When false (default true), reload a finished run from the trajectory cache instead of calling Gemini. */
+  useCache?: boolean;
 }
 
 /**
@@ -110,14 +117,19 @@ export async function runAgentPipeline(
 
 /**
  * Run both systems (baseline + agent) on a case and persist their trajectories.
+ *
+ * When `useCache` is true (default), a system whose trajectory already exists
+ * is reloaded from `trajectoriesDir` instead of calling Gemini — this makes
+ * repeated eval runs free of API quota usage.
  */
 export async function investigateCase(
   loaded: LoadedCase,
-  opts: { systems: Array<"baseline" | "agent">; trajectoriesDir: string },
+  opts: InvestigateOptions,
 ): Promise<{
   baseline: Investigation | null;
   agent: AgentRunResult | null;
 }> {
+  const useCache = opts.useCache !== false;
   const disputedCustomer = resolvedDisputedCustomer(loaded.evidence);
 
   const ctx: CaseContext = {
@@ -130,23 +142,50 @@ export async function investigateCase(
   let agent: AgentRunResult | null = null;
 
   if (opts.systems.includes("baseline")) {
-    baseline = await runBaseline(ctx);
-    writeTrajectory(opts.trajectoriesDir, {
-      caseId: loaded.caseId,
-      system: "baseline",
-      investigation: baseline,
-      steps: [],
-    });
+    if (useCache && hasTrajectory(opts.trajectoriesDir, loaded.caseId, "baseline")) {
+      const cached = readTrajectory(opts.trajectoriesDir, loaded.caseId, "baseline");
+      if (cached) {
+        baseline = cached.investigation as Investigation;
+      }
+    }
+    if (!baseline) {
+      baseline = await runBaseline(ctx);
+      writeTrajectory(opts.trajectoriesDir, {
+        caseId: loaded.caseId,
+        system: "baseline",
+        investigation: baseline,
+        steps: [],
+      });
+    }
   }
 
   if (opts.systems.includes("agent")) {
-    agent = await runAgentPipeline(ctx);
-    writeTrajectory(opts.trajectoriesDir, {
-      caseId: loaded.caseId,
-      system: "agent",
-      investigation: agent.investigation,
-      steps: agent.steps,
-    });
+    if (useCache && hasTrajectory(opts.trajectoriesDir, loaded.caseId, "agent")) {
+      const cached = readTrajectory(opts.trajectoriesDir, loaded.caseId, "agent");
+      const verification = cached?.verification as Verification | undefined;
+      const adversarialReview = cached?.adversarialReview as ContradictionReview | undefined;
+      if (cached && verification && adversarialReview) {
+        agent = {
+          investigation: cached.investigation as Investigation,
+          verification,
+          adversarialReview,
+          wasRetried: cached.wasRetried ?? false,
+          steps: cached.steps,
+        };
+      }
+    }
+    if (!agent) {
+      agent = await runAgentPipeline(ctx);
+      writeTrajectory(opts.trajectoriesDir, {
+        caseId: loaded.caseId,
+        system: "agent",
+        investigation: agent.investigation,
+        steps: agent.steps,
+        verification: agent.verification,
+        adversarialReview: agent.adversarialReview,
+        wasRetried: agent.wasRetried,
+      });
+    }
   }
 
   return { baseline, agent };

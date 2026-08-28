@@ -7,6 +7,7 @@ import {
   type GroundTruth as GroundTruthType,
 } from "./schemas/investigation.js";
 import { investigateCase, resolvedDisputedCustomer } from "./workflow/investigate.js";
+import { hasTrajectory } from "./trace.js";
 import { renderHtmlReport } from "./report/render-html.js";
 import { renderAsciiReport } from "./report/render-ascii.js";
 import { toTimelineEvents } from "./lib/prompt.js";
@@ -18,6 +19,10 @@ import { hasGeminiKey } from "./lib/gemini.js";
  * Runs the baseline and the agent pipeline across every case, scores each
  * system's structured output against ground_truth (no free-text grading),
  * writes browser-ready HTML reports, and prints a comparison table.
+ *
+ * Trajectories are cached under evidence/trajectories: a case whose results
+ * already exist is reloaded instead of re-running Gemini (unless --force is
+ * passed). This makes repeated scoring runs free of API quota usage.
  */
 
 const CASES_DIR = "cases";
@@ -79,7 +84,7 @@ function scoreInvestigation(
   return { correctVerifiedCustomer, correctClaimValidity, surfacedContradiction, passed };
 }
 
-async function runAll(): Promise<CaseResult[]> {
+async function runAll(opts: { useCache: boolean }): Promise<CaseResult[]> {
   if (!hasGeminiKey()) {
     throw new Error(
       "GEMINI_API_KEY is not set. Copy .env.example to .env and add your key before running the eval.",
@@ -104,7 +109,12 @@ async function runAll(): Promise<CaseResult[]> {
     const { baseline, agent } = await investigateCase(loaded, {
       systems: ["baseline", "agent"],
       trajectoriesDir: TRAJECTORIES_DIR,
+      useCache: opts.useCache,
     });
+
+    if (!baseline && !agent) {
+      throw new Error(`No results produced for ${loaded.caseId}`);
+    }
 
     if (baseline) {
       writeFileSync(
@@ -200,16 +210,43 @@ export async function evaluate(): Promise<void> {
   mkdirSync(REPORT_DIR, { recursive: true });
   mkdirSync(TRAJECTORIES_DIR, { recursive: true });
 
-  const results = await runAll();
+  const results = await runAll({ useCache: useCacheEnabled() });
+
+  const cached =
+    results.filter((r) => {
+      const b = hasTrajectory(TRAJECTORIES_DIR, r.caseId, "baseline");
+      const a = hasTrajectory(TRAJECTORIES_DIR, r.caseId, "agent");
+      return b && a;
+    }).length;
 
   const table = renderTable(results);
   console.log("\n" + table);
+  console.log(
+    `\n${results.length} cases · ${cached} cached · ${results.length - cached} fresh (Gemini)`,
+  );
 
   writeFileSync(
     RESULTS_FILE,
     JSON.stringify({ generatedAt: new Date().toISOString(), results }, null, 2),
     "utf8",
   );
+}
+
+/**
+ * Whether the eval may reuse cached trajectories.
+ *  - `--force` on the CLI bypasses the cache;
+ *  - otherwise falls back to the `EVAL_USE_CACHE` env var (default true).
+ */
+export function useCacheEnabled(): boolean {
+  if (process.argv.includes("--force")) {
+    console.log("ℹ --force: ignoring cached trajectories, re-running Gemini.");
+    return false;
+  }
+  const env = process.env.EVAL_USE_CACHE?.trim();
+  if (env !== undefined && env !== "") {
+    return env.toLowerCase() !== "false" && env.toLowerCase() !== "0";
+  }
+  return true;
 }
 
 if (process.argv[1]?.endsWith("evaluate.ts")) {

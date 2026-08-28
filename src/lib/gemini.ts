@@ -1,6 +1,8 @@
 import "dotenv/config";
 import { GoogleGenAI } from "@google/genai";
 import { z } from "zod";
+import { waitForGeminiSlot } from "./rate-limit.js";
+import { withGeminiRetry } from "./gemini-retry.js";
 
 /**
  * Shared Gemini client + structured-output helper.
@@ -53,22 +55,29 @@ export async function generateStructured<T extends z.ZodTypeAny>(
 ): Promise<z.infer<T>> {
   const jsonSchema = z.toJSONSchema(schema) as Record<string, unknown>;
 
-  const response = await geminiClient().models.generateContent({
-    model,
-    contents: [{ role: "user", parts: [{ text: prompt }] }],
-    config: {
-      responseMimeType: "application/json",
-      // The SDK auto-moves a schema containing `$schema` into `responseJsonSchema`,
-      // enabling native backend JSON Schema structured output.
-      responseSchema: jsonSchema as never,
-    },
+  // The actual Gemini call is wrapped so that:
+  //  - every request is paced by the free-tier rate limiter, and
+  //  - a 429 (quota exceeded) is retried with backoff.
+  return withGeminiRetry(async () => {
+    await waitForGeminiSlot();
+
+    const response = await geminiClient().models.generateContent({
+      model,
+      contents: [{ role: "user", parts: [{ text: prompt }] }],
+      config: {
+        responseMimeType: "application/json",
+        // The SDK auto-moves a schema containing `$schema` into `responseJsonSchema`,
+        // enabling native backend JSON Schema structured output.
+        responseSchema: jsonSchema as never,
+      },
+    });
+
+    const text = response.text;
+    if (!text) {
+      throw new Error("Gemini returned no text for structured output.");
+    }
+
+    const parsed: unknown = JSON.parse(text);
+    return schema.parse(parsed);
   });
-
-  const text = response.text;
-  if (!text) {
-    throw new Error("Gemini returned no text for structured output.");
-  }
-
-  const parsed: unknown = JSON.parse(text);
-  return schema.parse(parsed);
 }
