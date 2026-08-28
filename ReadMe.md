@@ -158,7 +158,7 @@ traceos/
 └── REPRODUCTION.md
 ```
 
-**Stack:** Node.js, TypeScript, OpenAI Agents SDK, Zod, `csv-parse`, `dotenv`.
+**Stack:** Node.js, TypeScript, GEMINI, Zod, `csv-parse`, `dotenv`.
 
 ---
 
