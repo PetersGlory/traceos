@@ -2,11 +2,6 @@ import { z } from "zod";
 
 /**
  * Core TraceOS schemas.
- *
- * This file is the single source of truth for the structured types that flow
- * through the whole system: evidence ingestion, the investigation pipeline, and
- * evaluation. Everything else imports from here so that scoring (evaluate.ts)
- * can compare agent output against ground truth using the same shapes.
  */
 
 /** The kind of source an evidence item was extracted from. */

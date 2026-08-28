@@ -50,7 +50,7 @@ None of the Postgres/Next.js/dashboard layer is a build target right now — it'
 | Investigator | LLM agent, structured output (`InvestigationSchema`) |
 | Contradiction / adversarial review | LLM agent, structured output, explicitly instructed to try to disprove the investigator's conclusion |
 | Verifier | LLM agent, can reject and return `approved: false`, which triggers exactly **one** retry of the investigator with the verifier's feedback appended. Capped at 1 retry — an open-ended loop is a time sink, not a reward. |
-| Report renderer | Boxed, human-readable ASCII report (see demo output below) |
+| Report renderer | Boxed, human-readable ASCII report (demo output below) **plus a self-contained HTML dossier** per case (`report/<case-id>.html`) via `src/report/render-html.ts` — verified/rejected stamp, confidence meters, findings, contradictions, evidence trail, timeline, unresolved questions, and a "Verifier objections" panel on rejection. |
 | Baseline | Single prompt, all raw evidence dumped in, forced into the *same* output schema as the agent, so scoring is apples-to-apples |
 | Eval harness | Runs both systems on all cases, scores against structured ground truth (not free-text grading), outputs a results table |
 | Trajectory logging | One JSON file per case per system: agent name → input → output → retry (if any) |
@@ -126,7 +126,8 @@ traceos/
 │   │   └── investigate.ts          # investigator → contradiction → verifier (+1 retry if rejected)
 │   │
 │   ├── report/
-│   │   └── render.ts               # boxed ASCII output
+│   │   ├── render-html.ts          # self-contained HTML dossier (verified/rejected)
+│   │   └── bootstrap-demo.ts       # demo report generator (until investigate.ts lands)
 │   │
 │   ├── data/
 │   │   └── load-case.ts
@@ -146,6 +147,7 @@ traceos/
 │   └── case-02.../ ... case-12.../
 │
 ├── evidence/trajectories/          # generated
+├── report/                         # generated HTML dossiers per case
 ├── results.json                    # generated
 ├── .env.example
 ├── .gitignore
@@ -183,7 +185,47 @@ Structured, not free text, so scoring can run unattended across baseline and age
 
 ---
 
-## Case set plan (10–12 total)
+## Investigation output & the HTML report
+
+The agent pipeline returns an `Investigation` that carries **both** the fields needed for unattended scoring and the fields the report renders:
+
+```jsonc
+{
+  "case_id": "case-01-demo",
+  "disputed_customer": "CUST-A",       // scoring  → ground_truth.disputed_customer
+  "claim_is_valid": false,             // scoring  → ground_truth.disputed_customer_claim_is_valid
+  "verified_customer": "CUST-B",       // scoring  → ground_truth.correct_verified_customer
+  "confidence": 0.96,                  // 0..1 fraction (report shows 96%)
+  "key_finding": "The successful ₦250,000 transaction belongs to Customer B.",
+  // report-only fields:
+  "conclusion": "Customer A's payment claim is NOT verified.",
+  "findings": ["TXN-773 was recorded as FAILED by the provider at 10:32 UTC.", "…"],
+  "contradictions": ["Receipt (EVD-06) states TXN-773 succeeded; provider says it failed."],
+  "supporting_evidence_ids": ["EVD-03", "EVD-04", "EVD-06"],
+  "unresolved_questions": ["Whether the receipt was fabricated is unestablished."]
+}
+```
+
+`src/report/render-html.ts` turns this into a **static, self-contained HTML dossier** (no server, no heavy JS — just a native `<details>` toggle) written to `report/<case-id>.html`. It takes the real `Investigation`, `Verification`, `EvidenceItem[]`, and `TimelineEvent[]` typed against `src/schemas/investigation.ts`, so the whole call is:
+
+```ts
+fs.writeFileSync(`report/${caseId}.html`, renderHtmlReport({ caseId, investigation, verification, evidence, timeline }));
+```
+
+The report's verdict stamp is driven by the verifier, which makes the reject path visually obvious:
+
+- `verification.approved === true` → **VERIFIED** (green stamp), investigator's conclusion shown.
+- `verification.approved === false` → **REJECTED** (red stamp), a `re-investigated after rejection` note when a retry occurred, `verification.correctedConclusion` shown in place of the investigator's conclusion, and a **"Verifier objections"** panel listing `unsupportedClaims`, `missingEvidence`, and `contradictionErrors`.
+
+Generate the demo dossiers (one verified, one rejected) with:
+
+```
+npm run report:demo
+```
+
+The rejected variant is a strong visual beat for the demo video / changelog walkthrough ("biggest improvement" — the stamp flips and the corrected conclusion appears).
+
+
 
 - **4–5 straightforward cases** — one clean contradiction each, different transaction/customer combinations
 - **3–4 clean cases** — the customer's claim actually checks out, no contradiction. These measure false-positive rate.

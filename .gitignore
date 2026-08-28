@@ -4,6 +4,7 @@ dist/
 
 # generated artifacts
 evidence/trajectories/
+report/
 results.json
 
 # OS / editor
