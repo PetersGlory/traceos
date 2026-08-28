@@ -16,6 +16,7 @@ TraceOS answers one question: *given all this conflicting evidence, what actuall
 - [Architecture](#architecture)
 - [Ground truth schema](#ground-truth-schema)
 - [Investigation output & the HTML report](#investigation-output--the-html-report)
+- [Running the MVP](#running-the-mvp)
 - [Case set plan](#case-set-plan-1012-total)
 - [Build plan](#build-plan-24h)
 - [V2 backlog](#v2-backlog)
@@ -111,33 +112,40 @@ State this explicitly in the final submission under a "what we deliberately cut 
 traceos/
 ├── src/
 │   ├── agents/
-│   │   ├── investigator.agent.ts
-│   │   ├── contradiction.agent.ts
-│   │   └── verifier.agent.ts
+│   │   ├── investigator.agent.ts     # LLM, Investigation output
+│   │   ├── contradiction.agent.ts    # LLM, adversarial, tries to disprove
+│   │   └── verifier.agent.ts         # LLM, approve/reject + one-retry feedback
 │   │
 │   ├── schemas/
-│   │   └── investigation.ts        # EvidenceItem, Investigation, Verification
+│   │   ├── investigation.ts          # EvidenceItem, Investigation, Verification, TimelineEvent, ...
+│   │   └── trajectory.ts             # per-case/per-system run log
+│   │
+│   ├── lib/
+│   │   ├── gemini.ts                 # shared client + Zod→Gemini structured output
+│   │   └── prompt.ts                 # evidence serialization + timeline shaping
 │   │
 │   ├── evidence/
-│   │   ├── extract-structured.ts   # deterministic CSV → EvidenceItem[]
-│   │   ├── extract-unstructured.ts # one LLM call: chat/receipt text → EvidenceItem[]
-│   │   └── build-timeline.ts       # deterministic sort, no LLM
+│   │   ├── extract-structured.ts     # deterministic CSV → EvidenceItem[]
+│   │   ├── extract-unstructured.ts   # one LLM call: chat/receipt text → EvidenceItem[]
+│   │   └── build-timeline.ts         # deterministic sort, no LLM
 │   │
 │   ├── workflow/
-│   │   └── investigate.ts          # investigator → contradiction → verifier (+1 retry if rejected)
+│   │   └── investigate.ts            # baseline/agent orchestration, pipeline + retry, trajectories
 │   │
 │   ├── report/
-│   │   ├── render-html.ts          # self-contained HTML dossier (verified/rejected)
-│   │   └── bootstrap-demo.ts       # demo report generator (until investigate.ts lands)
+│   │   ├── render-html.ts            # self-contained HTML dossier (verified/rejected)
+│   │   ├── render-ascii.ts           # boxed ASCII dossier (terminal)
+│   │   └── bootstrap-demo.ts         # demo-only report generator (no API key needed)
 │   │
 │   ├── data/
 │   │   └── load-case.ts
 │   │
-│   ├── baseline.ts
-│   ├── evaluate.ts
-│   └── index.ts
+│   ├── trace.ts                      # trajectory persistence
+│   ├── baseline.ts                   # single-prompt, same schema as agent
+│   ├── evaluate.ts                   # run + score both systems, results table
+│   └── index.ts                      # CLI entry (single case)
 │
-├── cases/                          # 10-12 synthetic cases
+├── cases/                          # 12 synthetic cases
 │   ├── case-01-demo/
 │   │   ├── ground_truth.json       # structured, auto-scorable
 │   │   ├── orders.csv
@@ -147,9 +155,9 @@ traceos/
 │   │   └── receipt.txt
 │   └── case-02.../ ... case-12.../
 │
-├── evidence/trajectories/          # generated
-├── report/                         # generated HTML dossiers per case
-├── results.json                    # generated
+├── evidence/trajectories/          # generated (case.<system>.json)
+├── report/                         # generated HTML dossiers per case/system
+├── results.json                    # generated eval results
 ├── .env.example
 ├── .gitignore
 ├── package.json
@@ -225,6 +233,30 @@ npm run report:demo
 ```
 
 The rejected variant is a strong visual beat for the demo video / changelog walkthrough ("biggest improvement" — the stamp flips and the corrected conclusion appears).
+
+---
+
+## Running the MVP
+
+Requires a `GEMINI_API_KEY` in `.env` (see `.env.example`). The model is set via `GEMINI_MODEL` (default `gemini-2.5-flash`).
+
+```
+npm run dev                    # run baseline + agent on one case (default case-01-demo)
+npm run dev -- cases/case-05-contradiction
+npm run eval                   # run + score both systems on all cases → results.json + comparison table
+npm run report:demo            # generate demo dossiers (verified + rejected) with NO API key
+npm run typecheck
+```
+
+For one case, `npm run dev` writes `report/<caseId>.baseline.html` and `report/<caseId>.agent.html`, prints the boxed ASCII dossiers, and logs trajectories to `evidence/trajectories/<caseId>.<system>.json`.
+
+`npm run eval`:
+- loads all 12 cases,
+- runs baseline + agent pipeline on each (writing HTML per case/system),
+- scores each structured output against `ground_truth.json` — names the right customer, flags claim validity correctly, surfaces the right contradiction,
+- prints the comparison table and writes `results.json`.
+
+The pipeline order is: **investigator → contradiction (adversarial) → verifier**, with exactly **one** verifier-triggered retry of the investigator before the verdict is handed to the human reviewer.
 
 ---
 

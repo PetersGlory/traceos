@@ -7,6 +7,7 @@
   "scripts": {
     "dev": "tsx src/index.ts",
     "report:demo": "tsx src/report/bootstrap-demo.ts",
+    "eval": "tsx src/evaluate.ts",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
