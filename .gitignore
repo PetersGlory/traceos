@@ -1,0 +1,12 @@
+node_modules/
+dist/
+.env
+
+# generated artifacts
+evidence/trajectories/
+results.json
+
+# OS / editor
+.DS_Store
+Thumbs.db
+*.log

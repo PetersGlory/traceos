@@ -1,0 +1,100 @@
+import { z } from "zod";
+
+/**
+ * Core TraceOS schemas.
+ *
+ * This file is the single source of truth for the structured types that flow
+ * through the whole system: evidence ingestion, the investigation pipeline, and
+ * evaluation. Everything else imports from here so that scoring (evaluate.ts)
+ * can compare agent output against ground truth using the same shapes.
+ */
+
+/** The kind of source an evidence item was extracted from. */
+export const EvidenceType = z.enum([
+  "orders", // orders.csv — order records
+  "payment", // payment_provider.csv — payment gateway ledger
+  "bank", // bank_settlement.csv — bank settlement records
+  "receipt", // receipt.txt — free-text receipt
+  "chat", // customer_chat.txt — free-text chat transcript
+]);
+
+export type EvidenceType = z.infer<typeof EvidenceType>;
+
+/**
+ * A single, schema-normalized piece of evidence.
+ */
+export const EvidenceItem = z.object({
+  id: z.string(),
+  source: z.string(),
+  type: EvidenceType,
+  timestamp: z.string(),
+  ref: z.string().optional(),
+  parties: z.array(z.string()).optional(),
+  amountMinor: z.number().int().optional(),
+  status: z.string().optional(),
+  raw: z.string(),
+});
+
+export type EvidenceItem = z.infer<typeof EvidenceItem>;
+
+/** A specific contradiction between two evidence items. */
+export const Contradiction = z.object({
+  description: z.string(),
+  ref: z.string(),
+  claimedStatus: z.string(),
+  actualStatus: z.string(),
+});
+
+export type Contradiction = z.infer<typeof Contradiction>;
+
+/**
+ * The structured output of the investigation pipeline (investigator agent) and
+ * of the baseline. Fields mirror ground_truth.json so scoring is apples-to-apples.
+ */
+export const Investigation = z.object({
+  caseId: z.string(),
+  disputedCustomer: z.string(),
+  claimIsValid: z.boolean(),
+  verifiedCustomer: z.string(),
+  confidence: z.number().min(0).max(100),
+  keyFinding: z.string(),
+  contradictions: z.array(Contradiction),
+});
+
+export type Investigation = z.infer<typeof Investigation>;
+
+/** Output of the contradiction / adversarial review agent. */
+export const ContradictionReview = z.object({
+  contradictions: z.array(Contradiction),
+  notes: z.string(),
+});
+
+export type ContradictionReview = z.infer<typeof ContradictionReview>;
+
+/** Output of the verifier agent: approve, or reject with feedback (triggers 1 retry). */
+export const Verification = z.object({
+  approved: z.boolean(),
+  reasoning: z.string(),
+  feedback: z.string().optional(),
+});
+
+export type Verification = z.infer<typeof Verification>;
+
+/** Structured ground truth for a case — must map exactly onto Investigation fields. */
+export const GroundTruth = z.object({
+  caseId: z.string(),
+  correct_verified_customer: z.string(),
+  disputed_customer: z.string(),
+  disputed_customer_claim_is_valid: z.boolean(),
+  key_contradiction: z
+    .object({
+      claimed_ref: z.string().optional(),
+      actual_status: z.string().optional(),
+      real_successful_txn: z.string().optional(),
+      real_successful_customer: z.string().optional(),
+    })
+    .optional(),
+  difficulty: z.enum(["normal", "clean", "hard", "ambiguous"]),
+});
+
+export type GroundTruth = z.infer<typeof GroundTruth>;
