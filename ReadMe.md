@@ -122,6 +122,8 @@ traceos/
 │   │
 │   ├── lib/
 │   │   ├── gemini.ts                 # shared client + Zod→Gemini structured output
+│   │   ├── gemini-retry.ts           # 429 retry with capped exponential backoff
+│   │   ├── rate-limit.ts             # free-tier RPM pacing + Retry-After
 │   │   └── prompt.ts                 # evidence serialization + timeline shaping
 │   │
 │   ├── evidence/
@@ -140,7 +142,9 @@ traceos/
 │   ├── data/
 │   │   └── load-case.ts
 │   │
-│   ├── trace.ts                      # trajectory persistence
+│   ├── trace.ts                      # trajectory persistence + eval cache
+│   ├── cases.ts                      # safe case-dir resolution (path-traversal guard)
+│   ├── server.ts                     # Express web service (deployable)
 │   ├── baseline.ts                   # single-prompt, same schema as agent
 │   ├── evaluate.ts                   # run + score both systems, results table
 │   └── index.ts                      # CLI entry (single case)
@@ -155,9 +159,10 @@ traceos/
 │   │   └── receipt.txt
 │   └── case-02.../ ... case-12.../
 │
-├── evidence/trajectories/          # generated (case.<system>.json)
+├── evidence/trajectories/          # generated (case.<system>.json) — eval cache
 ├── report/                         # generated HTML dossiers per case/system
 ├── results.json                    # generated eval results
+├── render.yaml                     # Render web-service blueprint
 ├── .env.example
 ├── .gitignore
 ├── package.json
@@ -166,7 +171,7 @@ traceos/
 └── REPRODUCTION.md
 ```
 
-**Stack:** Node.js, TypeScript, GEMINI, Zod, `csv-parse`, `dotenv`.
+**Stack:** Node.js, TypeScript, Express, GEMINI, Zod, `csv-parse`, `dotenv`.
 
 ---
 
@@ -247,6 +252,9 @@ npm run eval                   # run + score both systems on all cases → resul
 npm run eval -- --force        # bypass the trajectory cache, re-run Gemini on every case
 npm run report:demo            # generate demo dossiers (verified + rejected) with NO API key
 npm run typecheck
+npm run build                  # compile src/ → dist/
+npm run dev:server             # web service (tsx, for local dev)
+npm run start:server           # web service (node dist/server.js, for deploy)
 ```
 
 For one case, `npm run dev` writes `report/<caseId>.baseline.html` and `report/<caseId>.agent.html`, prints the boxed ASCII dossiers, and logs trajectories to `evidence/trajectories/<caseId>.<system>.json`.
@@ -271,6 +279,28 @@ Every Gemini call goes through two guards in `src/lib/`:
 > The eval runner caches completed agent trajectories. The initial benchmark requires model calls; subsequent scoring runs operate entirely on cached results and do not consume API quota.
 
 To force a full re-run, pass `--force` (`npm run eval -- --force`) or set `EVAL_USE_CACHE=false` in `.env`.
+
+---
+
+## Deployment (web service)
+
+A minimal Express wrapper (`src/server.ts`) lets judges **click a case and watch the real agent pipeline run live**, producing the same HTML dossier the CLI writes:
+
+- `GET /` — HTML index listing all cases
+- `GET /cases` — JSON list of `caseId`s
+- `GET /cases/:caseId` — runs baseline + agent live and returns the HTML dossier (404 for unknown cases)
+
+Run it locally with `npm run dev:server`, or compiled with `npm run build && npm run start:server`.
+
+`render.yaml` is a Render blueprint (build: `npm ci && npm run build`; start: `node dist/server.js`). Connect the repo as a **Blueprint**, then set the `GEMINI_API_KEY` secret in the Render dashboard — the key is never committed (`sync: false`). Use **`GEMINI_API_KEY`**, not `OPENAI_API_KEY`; TraceOS authenticates to Gemini via `GEMINI_API_KEY` in `src/lib/gemini.ts`.
+
+Free-tier tradeoffs to know before demo day:
+
+- Free web services **spin down after inactivity** and take ~30–60s to wake on the next request. Hit the URL yourself a minute before recording, or use the Starter plan for the 24h window.
+- Free-tier disk is **ephemeral** — runtime reports/trajectories vanish on redeploy. Regenerate them by clicking "Run investigation" again; nothing permanent is stored.
+- The CLI (the primary reproduction path in `REPRODUCTION.md`) keeps working alongside the server.
+
+Because the live pipeline is rate-limited (up to ~13s between Gemini calls, more on a rejection retry), a full case takes a while on the free tier — fine for a judge clicking at their own pace, less suited to a live sync narration.
 
 ---
 
