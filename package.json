@@ -6,6 +6,7 @@
   "private": true,
   "scripts": {
     "dev": "tsx src/index.ts",
+    "report:demo": "tsx src/report/bootstrap-demo.ts",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {

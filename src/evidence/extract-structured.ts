@@ -57,15 +57,33 @@ export function extractStructuredCsv(
     const parties = [cs("customer_id") ?? cs("customer"), cs("provider_id") ?? cs("payment_id")]
       .filter((p): p is string => Boolean(p));
 
+    const refValue =
+      cs("ref") ?? cs("txn_ref") ?? cs("transaction_ref") ?? cs("txn_id");
+    const amountMinorValue =
+      num("amount_kobo") ?? num("amount_minor") ?? num("amount") ?? undefined;
+    const statusValue = cs("status") ?? cs("result") ?? cs("state");
+
+    const statement = [
+      refValue ?? cs("order_ref") ?? "(no ref)",
+      parties[0] ? `for ${parties[0]}` : "",
+      amountMinorValue !== undefined
+        ? `${(amountMinorValue / 100).toLocaleString()} ${cs("currency") ?? ""}`.trim()
+        : "",
+      statusValue ? `(${statusValue})` : "",
+    ]
+      .filter(Boolean)
+      .join(" ");
+
     const item: EvidenceItem = {
       id: `${fileName}:${i + 2}`, // +1 header, +1 zero-index
       source: fileName,
       type: fieldMap.type,
       timestamp: cs("timestamp") ?? cs("date") ?? cs("time") ?? "",
-      ref: cs("ref") ?? cs("txn_ref") ?? cs("transaction_ref") ?? cs("txn_id"),
+      statement,
+      ref: refValue,
       parties,
-      amountMinor: num("amount_kobo") ?? num("amount_minor") ?? num("amount") ?? undefined,
-      status: cs("status") ?? cs("result") ?? cs("state"),
+      amountMinor: amountMinorValue,
+      status: statusValue,
       raw: JSON.stringify(row),
     };
 

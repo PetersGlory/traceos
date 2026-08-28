@@ -66,6 +66,7 @@ export async function extractUnstructured(
     source: sourceName,
     type,
     timestamp: it.timestamp,
+    statement: it.description,
     ...(it.ref !== undefined ? { ref: it.ref } : {}),
     ...(it.parties !== undefined ? { parties: it.parties } : {}),
     ...(it.amountMinor !== undefined ? { amountMinor: it.amountMinor } : {}),

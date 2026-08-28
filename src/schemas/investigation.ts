@@ -28,6 +28,7 @@ export const EvidenceItem = z.object({
   source: z.string(),
   type: EvidenceType,
   timestamp: z.string(),
+  statement: z.string(),
   ref: z.string().optional(),
   parties: z.array(z.string()).optional(),
   amountMinor: z.number().int().optional(),
@@ -37,7 +38,7 @@ export const EvidenceItem = z.object({
 
 export type EvidenceItem = z.infer<typeof EvidenceItem>;
 
-/** A specific contradiction between two evidence items. */
+/** A specific structured contradiction between two evidence items. */
 export const Contradiction = z.object({
   description: z.string(),
   ref: z.string(),
@@ -47,23 +48,36 @@ export const Contradiction = z.object({
 
 export type Contradiction = z.infer<typeof Contradiction>;
 
+/** A single event in a case timeline, displayed by the HTML report. */
+export const TimelineEvent = z.object({
+  timestamp: z.string(),
+  event: z.string(),
+  evidenceId: z.string(),
+  importance: z.enum(["high", "medium", "low"]),
+});
+
+export type TimelineEvent = z.infer<typeof TimelineEvent>;
+
 /**
  * The structured output of the investigation pipeline (investigator agent) and
- * of the baseline. Fields mirror ground_truth.json so scoring is apples-to-apples.
+ * of the baseline.
  */
 export const Investigation = z.object({
   caseId: z.string(),
   disputedCustomer: z.string(),
   claimIsValid: z.boolean(),
   verifiedCustomer: z.string(),
-  confidence: z.number().min(0).max(100),
+  confidence: z.number().min(0).max(1),
+  conclusion: z.string(),
   keyFinding: z.string(),
-  contradictions: z.array(Contradiction),
+  findings: z.array(z.string()),
+  contradictions: z.array(z.string()),
+  supportingEvidenceIds: z.array(z.string()),
+  unresolvedQuestions: z.array(z.string()),
 });
 
 export type Investigation = z.infer<typeof Investigation>;
 
-/** Output of the contradiction / adversarial review agent. */
 export const ContradictionReview = z.object({
   contradictions: z.array(Contradiction),
   notes: z.string(),
@@ -71,12 +85,32 @@ export const ContradictionReview = z.object({
 
 export type ContradictionReview = z.infer<typeof ContradictionReview>;
 
-/** Output of the verifier agent: approve, or reject with feedback (triggers 1 retry). */
-export const Verification = z.object({
-  approved: z.boolean(),
-  reasoning: z.string(),
-  feedback: z.string().optional(),
-});
+type VerificationStructured = {
+  approved: boolean;
+  reasoning: string;
+  feedback?: string;
+  confidence: number;
+  correctedConclusion?: string;
+  unsupportedClaims: string[];
+  missingEvidence: string[];
+  contradictionErrors: string[];
+};
+
+/**
+ * Output of the verifier agent: approve, or reject with structured objections.
+ */
+export const Verification: z.ZodType<VerificationStructured> = z
+  .object({
+    approved: z.boolean(),
+    reasoning: z.string(),
+    feedback: z.string().optional(),
+    confidence: z.number().min(0).max(1),
+    correctedConclusion: z.string().optional(),
+    unsupportedClaims: z.array(z.string()),
+    missingEvidence: z.array(z.string()),
+    contradictionErrors: z.array(z.string()),
+  })
+  .describe("Verification");
 
 export type Verification = z.infer<typeof Verification>;
 
@@ -95,7 +129,6 @@ export const GroundTruth = z.object({
     })
     .optional(),
   difficulty: z.enum(["normal", "clean", "hard", "ambiguous"]),
-  /** Optional human note (e.g. why a case is ambiguous). Not used for scoring. */
   note: z.string().optional(),
 });
 
