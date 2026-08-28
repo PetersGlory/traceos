@@ -15,6 +15,7 @@ TraceOS answers one question: *given all this conflicting evidence, what actuall
 - [Out of scope for MVP](#explicitly-out-of-scope-for-mvp-v2-backlog)
 - [Architecture](#architecture)
 - [Ground truth schema](#ground-truth-schema)
+- [Investigation output & the HTML report](#investigation-output--the-html-report)
 - [Case set plan](#case-set-plan-1012-total)
 - [Build plan](#build-plan-24h)
 - [V2 backlog](#v2-backlog)
@@ -191,18 +192,18 @@ The agent pipeline returns an `Investigation` that carries **both** the fields n
 
 ```jsonc
 {
-  "case_id": "case-01-demo",
-  "disputed_customer": "CUST-A",       // scoring  → ground_truth.disputed_customer
-  "claim_is_valid": false,             // scoring  → ground_truth.disputed_customer_claim_is_valid
-  "verified_customer": "CUST-B",       // scoring  → ground_truth.correct_verified_customer
+  "caseId": "case-01-demo",
+  "disputedCustomer": "CUST-A",        // scoring  → ground_truth.disputed_customer
+  "claimIsValid": false,               // scoring  → ground_truth.disputed_customer_claim_is_valid
+  "verifiedCustomer": "CUST-B",        // scoring  → ground_truth.correct_verified_customer
   "confidence": 0.96,                  // 0..1 fraction (report shows 96%)
-  "key_finding": "The successful ₦250,000 transaction belongs to Customer B.",
+  "keyFinding": "The successful ₦250,000 transaction belongs to Customer B.",
   // report-only fields:
   "conclusion": "Customer A's payment claim is NOT verified.",
   "findings": ["TXN-773 was recorded as FAILED by the provider at 10:32 UTC.", "…"],
   "contradictions": ["Receipt (EVD-06) states TXN-773 succeeded; provider says it failed."],
-  "supporting_evidence_ids": ["EVD-03", "EVD-04", "EVD-06"],
-  "unresolved_questions": ["Whether the receipt was fabricated is unestablished."]
+  "supportingEvidenceIds": ["EVD-03", "EVD-04", "EVD-06"],
+  "unresolvedQuestions": ["Whether the receipt was fabricated is unestablished."]
 }
 ```
 
@@ -225,7 +226,9 @@ npm run report:demo
 
 The rejected variant is a strong visual beat for the demo video / changelog walkthrough ("biggest improvement" — the stamp flips and the corrected conclusion appears).
 
+---
 
+## Case set plan (10–12 total)
 
 - **4–5 straightforward cases** — one clean contradiction each, different transaction/customer combinations
 - **3–4 clean cases** — the customer's claim actually checks out, no contradiction. These measure false-positive rate.
@@ -240,16 +243,16 @@ Write these before extending agent logic further — the eval set is what turns 
 
 | Hours | Work |
 |---|---|
-| 0–2 | Schemas, deterministic evidence/timeline code, `load-case.ts` |
+| 0–2 | Schemas (incl. report-facing Investigation fields, `TimelineEvent`), deterministic evidence/timeline code, `load-case.ts` |
 | 2–4 | Write 10–12 cases + structured `ground_truth.json` for each (reuse the demo case as case-01) |
 | 4–5 | Baseline — single prompt, same output schema as the agent |
 | 5–10 | Investigator + Contradiction + Verifier, single retry-on-reject wired up |
-| 10–12 | Report renderer (boxed format) |
+| 10–12 | Report renderer — boxed ASCII + HTML dossier (`render-html.ts`), verified/rejected stamps |
 | 12–13 | Trajectory logging wired into the workflow |
 | 13–16 | `evaluate.ts` — run baseline + agent across all cases, get real numbers |
 | 16–17 | Fix whatever the numbers reveal is broken — budget this, something will be |
 | 17–20 | README: problem/user, changelog, evaluation table, failure mode, hot take, "what we cut and why" |
-| 20–22 | Record 5-min video: problem → baseline → real execution → comparison → changelog → biggest win → removed experiment |
+| 20–22 | Record 5-min video: problem → baseline → real execution → comparison → changelog → biggest win → removed experiment (incl. the REJECTED stamp flip) |
 | 22–24 | REPRODUCTION.md, clean-clone sanity test, buffer |
 
 ---
