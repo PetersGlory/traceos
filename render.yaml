@@ -1,0 +1,29 @@
+# Render blueprint — TraceOS web service.
+#
+# Render will pick this up automatically when you connect the repo and choose
+# "Blueprint" (New > Blueprint). It builds the ESM output and runs the server.
+#
+# The GEMINI_API_KEY secret is intentionally blank and sync:false so it is set
+# ONLY from the Render dashboard (Environment > New secret) — never commit a key.
+services:
+  - type: web
+    name: traceos
+    runtime: node
+    plan: free
+    buildCommand: npm ci && npm run build
+    startCommand: node dist/server.js
+    envVars:
+      - key: GEMINI_API_KEY
+        sync: false
+        value: ""
+      - key: GEMINI_MODEL
+        sync: false
+        value: gemini-2.5-flash
+      - key: GEMINI_RATE_INTERVAL_MS
+        sync: false
+        value: "13000"
+      - key: EVAL_USE_CACHE
+        sync: false
+        value: "true"
+      - key: PORT
+        value: "3000"

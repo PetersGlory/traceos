@@ -8,15 +8,20 @@
     "dev": "tsx src/index.ts",
     "report:demo": "tsx src/report/bootstrap-demo.ts",
     "eval": "tsx src/evaluate.ts",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "build": "tsc",
+    "start:server": "node dist/server.js",
+    "dev:server": "tsx src/server.ts"
   },
   "dependencies": {
     "@google/genai": "^2.19.0",
     "csv-parse": "^6.0.0",
     "dotenv": "^16.4.5",
+    "express": "^5.2.1",
     "zod": "^4.2.1"
   },
   "devDependencies": {
+    "@types/express": "^5.0.6",
     "@types/node": "^22.0.0",
     "tsx": "^4.19.0",
     "typescript": "^5.6.0"
