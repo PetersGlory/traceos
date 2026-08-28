@@ -1,0 +1,1 @@
+CUST-I: Hi, I placed ORD-5001 on August 2nd at around 11am, ref TXN-501, 120,000 naira. The gateway shows successful but I have not received the goods. I want a refund.

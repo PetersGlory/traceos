@@ -1,0 +1,3 @@
+settlement_id,ref,amount_kobo,status,timestamp,txn_ref
+STL-3011,TXN-301,0,voided,2026-07-01T14:10:00,TXN-301
+STL-3021,TXN-302,8000000,settled,2026-07-01T14:10:30,TXN-302

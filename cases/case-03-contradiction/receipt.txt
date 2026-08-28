@@ -1,0 +1,6 @@
+PAYPALX Payment Receipt
+Transaction: TXN-301
+Customer: CUST-E
+Amount: NGN 80,000.00
+Date: 2026-07-01 14:00
+Status: SUCCESS

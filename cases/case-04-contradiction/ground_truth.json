@@ -1,0 +1,13 @@
+{
+  "case_id": "case-04-contradiction",
+  "correct_verified_customer": "CUST-H",
+  "disputed_customer": "CUST-G",
+  "disputed_customer_claim_is_valid": false,
+  "key_contradiction": {
+    "claimed_ref": "TXN-401",
+    "actual_status": "failed",
+    "real_successful_txn": "TXN-402",
+    "real_successful_customer": "CUST-H"
+  },
+  "difficulty": "normal"
+}

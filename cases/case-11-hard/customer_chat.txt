@@ -1,0 +1,2 @@
+CUST-R support chat 2026-09-14:
+"My statement shows a 75,000 naira refund dated September 9th, and also a 75,000 naira charge dated September 10th (TXN-1101). Since the refund came first and exists on my account, I believe my charge should be reversed. Please refund TXN-1101."

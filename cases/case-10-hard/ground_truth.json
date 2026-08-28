@@ -1,0 +1,13 @@
+{
+  "case_id": "case-10-hard",
+  "correct_verified_customer": "CUST-O",
+  "disputed_customer": "CUST-O",
+  "disputed_customer_claim_is_valid": false,
+  "key_contradiction": {
+    "claimed_ref": "TXN-1001",
+    "actual_status": "success",
+    "real_successful_txn": "TXN-1001",
+    "real_successful_customer": "CUST-O"
+  },
+  "difficulty": "hard"
+}

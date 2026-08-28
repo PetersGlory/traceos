@@ -1,0 +1,3 @@
+CUST-A: Hi, I paid for my order on May 2nd, order ORD-1001, reference TXN-773, for 250,000 naira. The payment went through and my card was charged, but I never received the item. Please help.
+Support: I can see a charge of 250,000 naira on 2026-05-02 associated with your card.
+CUST-A: Yes that's right. TXN-773 should be successful. I want a refund or the goods.

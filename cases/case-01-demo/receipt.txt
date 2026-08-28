@@ -1,0 +1,6 @@
+PAYCO Payment Receipt
+Transaction: TXN-773
+Customer: CUST-A
+Amount: NGN 250,000.00
+Date: 2026-05-02 12:15
+Status: SUCCESS

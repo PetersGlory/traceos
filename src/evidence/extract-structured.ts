@@ -3,46 +3,22 @@ import { EvidenceItem, type EvidenceType } from "../schemas/investigation.js";
 
 /**
  * Deterministic evidence extraction from structured CSV sources.
- *
- * No LLM here — this is pure parsing. CSV rows map onto EvidenceItem directly,
- * normalizing column names down to the shared shape (ref, parties, amountMinor,
- * status, timestamp). `source` records which file this came from so the report
- * and eval can attribute evidence.
  */
 
 /** Column-name → field mapping for a given CSV type. */
 interface CsvFieldMap {
   type: EvidenceType;
-  /** e.g. { ref: "transaction_ref", customer: "customer_id", ... } */
-  columns: Record<string, keyof EvidenceItemExtract | "raw">;
 }
-
-type EvidenceItemExtract = Omit<EvidenceItem, "id" | "type" | "raw"> & {
-  amountMinor?: number;
-};
 
 /** Central registry so load-case knows how to interpret each CSV file. */
 export const STRUCTURED_CSV_SPECS: Record<string, CsvFieldMap> = {
-  "orders.csv": {
-    type: "orders",
-    columns: {},
-  },
-  "payment_provider.csv": {
-    type: "payment",
-    columns: {},
-  },
-  "bank_settlement.csv": {
-    type: "bank",
-    columns: {},
-  },
+  "orders.csv": { type: "orders" },
+  "payment_provider.csv": { type: "payment" },
+  "bank_settlement.csv": { type: "bank" },
 };
 
 /**
  * Parse a CSV file's text into EvidenceItem[].
- *
- * Column names are read from the header row and matched flexibly:
- * normally we map by known-alias names, but to keep Phase 1 deterministic and
- * simple, each row's columns are surfaced onto a normalized field map.
  */
 export function extractStructuredCsv(
   fileName: string,
@@ -59,7 +35,6 @@ export function extractStructuredCsv(
 
   for (let i = 0; i < records.length; i++) {
     const row = records[i];
-    const normalized: Record<string, string | number | undefined> = {};
 
     // Map known aliases to canonical keys (all values remain strings).
     const normalized: Record<string, string> = {};
@@ -89,7 +64,7 @@ export function extractStructuredCsv(
       timestamp: cs("timestamp") ?? cs("date") ?? cs("time") ?? "",
       ref: cs("ref") ?? cs("txn_ref") ?? cs("transaction_ref") ?? cs("txn_id"),
       parties,
-      amountMinor: num(normalized.amount_kobo ?? normalized.amount_minor ?? normalized.amount) ?? undefined,
+      amountMinor: num("amount_kobo") ?? num("amount_minor") ?? num("amount") ?? undefined,
       status: cs("status") ?? cs("result") ?? cs("state"),
       raw: JSON.stringify(row),
     };

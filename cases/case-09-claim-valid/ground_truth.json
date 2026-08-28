@@ -1,0 +1,7 @@
+{
+  "case_id": "case-09-claim-valid",
+  "correct_verified_customer": "CUST-N",
+  "disputed_customer": "CUST-N",
+  "disputed_customer_claim_is_valid": true,
+  "difficulty": "clean"
+}

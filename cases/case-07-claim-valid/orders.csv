@@ -1,0 +1,3 @@
+order_ref,customer_id,txn_ref,amount_kobo,status,timestamp,provider_id
+ORD-7001,CUST-L,TXN-701,4500000,paid,2026-08-15T10:00:00,PAYCO
+ORD-7001,CUST-L,TXN-701,4500000,delivered,2026-08-17T12:00:00,PAYCO

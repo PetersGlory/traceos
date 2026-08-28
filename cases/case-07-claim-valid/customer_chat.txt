@@ -1,0 +1,2 @@
+Support chat 2026-08-20:
+CUST-L: My order ORD-7001 (TXN-701, 45,000 naira) shows delivered on the 17th. The item arrived but one of the two units is missing. Can you confirm only one was shipped, or was the second delayed?

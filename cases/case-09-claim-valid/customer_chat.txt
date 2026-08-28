@@ -1,0 +1,2 @@
+Support ticket 2026-08-31:
+CUST-N: My order ORD-9001, TXN-901, 9,000 naira. Payment went through Aug 25. Delivery was delayed but I received it Aug 30. Claiming no issues - just noting the delay in case it affects the guarantee window. Payment is confirmed good.
