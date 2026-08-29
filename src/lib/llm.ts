@@ -26,7 +26,7 @@
  */
 import "dotenv/config";
 import { z } from "zod";
-import { callGeminiJson, hasGeminiKey } from "./gemini.js";
+// import { callGeminiJson, hasGeminiKey } from "./gemini.js";
 import { callOpenAICompatible } from "./provider.js";
 import { waitForSlot } from "./rate-limit.js";
 import { withGeminiRetry, providerErrorStatus, cleanErrorMessage } from "./gemini-retry.js";
@@ -43,15 +43,15 @@ const groqKey = () => env("GROQ_API_KEY");
 const openrouterKey = () => env("OPENROUTER_API_KEY");
 
 export function hasAnyProviderKey(): boolean {
-  return Boolean(groqKey() || openrouterKey() || hasGeminiKey());
+  return Boolean(groqKey() || openrouterKey());
 }
 
-/** Model IDs; env-overridable because provider free-model catalogs change often. */
+/** Model IDs; env-overridable because provider model catalogs change often. */
 function groqModel(): string {
-  return env("GROQ_MODEL") ?? "llama-3.3-70b-versatile";
+  return env("GROQ_MODEL") ?? "openai/gpt-oss-20b";
 }
 function openrouterModel(): string {
-  return env("OPENROUTER_MODEL") ?? "meta-llama/llama-3.2-3b-instruct:free";
+  return env("OPENROUTER_MODEL") ?? "openai/gpt-oss-20b";
 }
 
 type ProviderName = "groq" | "openrouter"; // | "gemini";
