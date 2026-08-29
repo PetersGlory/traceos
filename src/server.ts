@@ -9,8 +9,9 @@
  *   GET /cases            - JSON list of { caseId, difficulty?, files }
  *   GET /cases/:caseId    - run the live pipeline and return the HTML dossier
  *
- * Requires GEMINI_API_KEY in the environment (Render: set the GEMINI_API_KEY
- * secret in the dashboard; never commit it).
+ * Requires at least one AI provider key (GROQ_API_KEY, OPENROUTER_API_KEY, or
+ * GEMINI_API_KEY) in the environment (Render: set the key(s) as dashboard
+ * secrets; never commit them).
  */
 import "dotenv/config";
 import express from "express";
@@ -21,7 +22,7 @@ import { resolveCaseDir } from "./cases.js";
 import { investigateCase } from "./workflow/investigate.js";
 import { renderHtmlReport } from "./report/render-html.js";
 import { toTimelineEvents } from "./lib/prompt.js";
-import { hasGeminiKey } from "./lib/gemini.js";
+import { hasAnyProviderKey } from "./lib/llm.js";
 
 const CASES_DIR = "cases";
 const TRAJECTORIES_DIR = "evidence/trajectories";
@@ -81,9 +82,9 @@ function indexHtml(cases: CaseMeta[]): string {
   <p>Evidence-driven payment/order dispute investigation. Pick a case to run the
      live agent pipeline (baseline + investigator&#8594;contradiction&#8594;verifier) and view the dossier.</p>
   ${
-    hasGeminiKey()
+    hasAnyProviderKey()
       ? ""
-      : `<p class="note">ℹ No <code>GEMINI_API_KEY</code> configured — the case pages will show an error until it is set.</p>`
+      : `<p class="note">ℹ No AI provider key configured — the case pages will show an error until <code>GROQ_API_KEY</code>, <code>OPENROUTER_API_KEY</code>, or <code>GEMINI_API_KEY</code> is set.</p>`
   }
   <h2>Cases</h2>
   <ul>
@@ -182,9 +183,9 @@ app.get("/cases/:caseId", async (req, res) => {
         msg,
         "```",
         "",
-        hasGeminiKey()
+        hasAnyProviderKey()
           ? "Return to [cases](/)."
-          : "`GEMINI_API_KEY` is not set. Configure it in the environment and try again.",
+          : "No AI provider key configured. Set GROQ_API_KEY, OPENROUTER_API_KEY, or GEMINI_API_KEY and try again.",
       ].join("\n"),
     );
   }
@@ -193,8 +194,8 @@ app.get("/cases/:caseId", async (req, res) => {
 app.listen(PORT, () => {
   console.log(`TraceOS server listening on http://localhost:${PORT}`);
   console.log(
-    hasGeminiKey()
-      ? `Gemini API key present (model via GEMINI_MODEL).`
-      : `Warning: no GEMINI_API_KEY set — /cases/:caseId will fail until configured.`,
+    hasAnyProviderKey()
+      ? `AI provider configured (router order via AI_PROVIDER).`
+      : `Warning: no AI provider key set — /cases/:caseId will fail until configured.`,
   );
 });

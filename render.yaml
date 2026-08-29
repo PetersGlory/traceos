@@ -3,8 +3,9 @@
 # Render will pick this up automatically when you connect the repo and choose
 # "Blueprint" (New > Blueprint). It builds the ESM output and runs the server.
 #
-# The GEMINI_API_KEY secret is intentionally blank and sync:false so it is set
-# ONLY from the Render dashboard (Environment > New secret) — never commit a key.
+# At least one provider key is required. Keys are intentionally blank and
+# sync:false so they are set ONLY from the Render dashboard
+# (Environment > New secret) — never commit a key.
 services:
   - type: web
     name: traceos
@@ -13,12 +14,30 @@ services:
     buildCommand: npm ci && npm run build
     startCommand: node dist/server.js
     envVars:
+      - key: GROQ_API_KEY
+        sync: false
+        value: ""
+      - key: GROQ_MODEL
+        sync: false
+        value: ""
+      - key: OPENROUTER_API_KEY
+        sync: false
+        value: ""
+      - key: OPENROUTER_MODEL
+        sync: false
+        value: ""
       - key: GEMINI_API_KEY
         sync: false
         value: ""
       - key: GEMINI_MODEL
         sync: false
         value: gemini-2.5-flash
+      - key: AI_PROVIDER
+        sync: false
+        value: "auto"
+      - key: AI_FALLBACK
+        sync: false
+        value: "true"
       - key: GEMINI_RATE_INTERVAL_MS
         sync: false
         value: "13000"

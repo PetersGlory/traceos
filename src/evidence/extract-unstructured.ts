@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { generateStructured } from "../lib/gemini.js";
+import { generateStructured } from "../lib/llm.js";
 import { EvidenceItem, type EvidenceType } from "../schemas/investigation.js";
 
 /**

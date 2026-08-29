@@ -1,4 +1,4 @@
-import { hasGeminiKey } from "../lib/gemini.js";
+import { hasAnyProviderKey } from "../lib/llm.js";
 import type { LoadedCase } from "../data/load-case.js";
 import type {
   ContradictionReview,
@@ -41,9 +41,9 @@ export interface InvestigateOptions {
 export async function runAgentPipeline(
   ctx: CaseContext,
 ): Promise<AgentRunResult> {
-  if (!hasGeminiKey()) {
+  if (!hasAnyProviderKey()) {
     throw new Error(
-      "GEMINI_API_KEY is not set. Copy .env.example to .env and add your key.",
+      "No AI provider key configured. Set GROQ_API_KEY, OPENROUTER_API_KEY, or GEMINI_API_KEY in .env.",
     );
   }
 

@@ -1,4 +1,4 @@
-import { generateStructured } from "../lib/gemini.js";
+import { generateStructured } from "../lib/llm.js";
 import { evidenceBlock } from "../lib/prompt.js";
 import {
   Verification,

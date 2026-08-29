@@ -11,7 +11,7 @@ import { hasTrajectory } from "./trace.js";
 import { renderHtmlReport } from "./report/render-html.js";
 import { renderAsciiReport } from "./report/render-ascii.js";
 import { toTimelineEvents } from "./lib/prompt.js";
-import { hasGeminiKey } from "./lib/gemini.js";
+import { hasAnyProviderKey, getProviderStats, resetProviderStats } from "./lib/llm.js";
 
 /**
  * Eval harness.
@@ -85,9 +85,9 @@ function scoreInvestigation(
 }
 
 async function runAll(opts: { useCache: boolean }): Promise<CaseResult[]> {
-  if (!hasGeminiKey()) {
+  if (!hasAnyProviderKey()) {
     throw new Error(
-      "GEMINI_API_KEY is not set. Copy .env.example to .env and add your key before running the eval.",
+      "No AI provider key configured. Set GROQ_API_KEY, OPENROUTER_API_KEY, or GEMINI_API_KEY in .env before running the eval.",
     );
   }
 
@@ -210,6 +210,7 @@ export async function evaluate(): Promise<void> {
   mkdirSync(REPORT_DIR, { recursive: true });
   mkdirSync(TRAJECTORIES_DIR, { recursive: true });
 
+  resetProviderStats();
   const results = await runAll({ useCache: useCacheEnabled() });
 
   const cached =
@@ -219,15 +220,31 @@ export async function evaluate(): Promise<void> {
       return b && a;
     }).length;
 
+  const stats = getProviderStats();
+
   const table = renderTable(results);
   console.log("\n" + table);
   console.log(
-    `\n${results.length} cases · ${cached} cached · ${results.length - cached} fresh (Gemini)`,
+    `\n${results.length} cases · ${cached} cached · ${results.length - cached} fresh (LLM)`,
   );
+  if (stats.totalCalls > 0) {
+    const attemptsTotal = Object.values(stats.attempts).reduce((a, b) => a + b, 0);
+    const successShare = (100 * (stats.totalCalls / attemptsTotal)).toFixed(0);
+    console.log(
+      `AI routing: ${successShare}% of calls succeeded on first try · ${stats.fallbackEvents} needed a provider fallback`,
+    );
+    for (const [name, n] of Object.entries(stats.successes)) {
+      console.log(`  - ${name}: ${n} successful call${n === 1 ? "" : "s"}`);
+    }
+  }
 
   writeFileSync(
     RESULTS_FILE,
-    JSON.stringify({ generatedAt: new Date().toISOString(), results }, null, 2),
+    JSON.stringify(
+      { generatedAt: new Date().toISOString(), results, providerStats: stats },
+      null,
+      2,
+    ),
     "utf8",
   );
 }
@@ -239,7 +256,7 @@ export async function evaluate(): Promise<void> {
  */
 export function useCacheEnabled(): boolean {
   if (process.argv.includes("--force")) {
-    console.log("ℹ --force: ignoring cached trajectories, re-running Gemini.");
+    console.log("ℹ --force: ignoring cached trajectories, re-running the LLM pipeline.");
     return false;
   }
   const env = process.env.EVAL_USE_CACHE?.trim();

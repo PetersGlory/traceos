@@ -6,7 +6,8 @@
  *                                   write report/<caseId>.*.html, print ASCII
  *   npm run eval                    run and score both systems on all cases
  *
- * Requires GEMINI_API_KEY in .env.
+ * Requires at least one AI provider key in .env (GROQ_API_KEY, OPENROUTER_API_KEY,
+ * or GEMINI_API_KEY).
  */
 import { mkdirSync, writeFileSync } from "node:fs";
 import { loadCase } from "./data/load-case.js";
@@ -14,15 +15,15 @@ import { investigateCase, resolvedDisputedCustomer } from "./workflow/investigat
 import { renderHtmlReport } from "./report/render-html.js";
 import { renderAsciiReport } from "./report/render-ascii.js";
 import { toTimelineEvents } from "./lib/prompt.js";
-import { hasGeminiKey } from "./lib/gemini.js";
+import { hasAnyProviderKey } from "./lib/llm.js";
 
 const TRAJECTORIES_DIR = "evidence/trajectories";
 const REPORT_DIR = "report";
 
 async function main(): Promise<void> {
-  if (!hasGeminiKey()) {
+  if (!hasAnyProviderKey()) {
     throw new Error(
-      "GEMINI_API_KEY is not set. Copy .env.example to .env and add your key.",
+      "No AI provider key configured. Copy .env.example to .env and set GROQ_API_KEY, OPENROUTER_API_KEY, or GEMINI_API_KEY.",
     );
   }
 

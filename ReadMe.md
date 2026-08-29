@@ -121,10 +121,12 @@ traceos/
 │   │   └── trajectory.ts             # per-case/per-system run log
 │   │
 │   ├── lib/
-│   │   ├── gemini.ts                 # shared client + Zod→Gemini structured output
-│   │   ├── gemini-retry.ts           # 429 retry with capped exponential backoff
-│   │   ├── rate-limit.ts             # free-tier RPM pacing + Retry-After
-│   │   └── prompt.ts                 # evidence serialization + timeline shaping
+│   │   ├── llm.ts                     # AI router: provider fallback + structured output
+│   │   ├── provider.ts                # OpenAI-compatible transport (Groq/OpenRouter)
+│   │   ├── gemini.ts                  # Gemini transport (native JSON-Schema output)
+│   │   ├── gemini-retry.ts            # 429 retry with capped exponential backoff
+│   │   ├── rate-limit.ts              # free-tier RPM pacing + Retry-After
+│   │   └── prompt.ts                  # evidence serialization + timeline shaping
 │   │
 │   ├── evidence/
 │   │   ├── extract-structured.ts     # deterministic CSV → EvidenceItem[]
@@ -171,7 +173,7 @@ traceos/
 └── REPRODUCTION.md
 ```
 
-**Stack:** Node.js, TypeScript, Express, GEMINI, Zod, `csv-parse`, `dotenv`.
+**Stack:** Node.js, TypeScript, Express, OpenAI-compatible router (Groq / OpenRouter / Gemini), Zod, `csv-parse`, `dotenv`.
 
 ---
 
@@ -243,13 +245,13 @@ The rejected variant is a strong visual beat for the demo video / changelog walk
 
 ## Running the MVP
 
-Requires a `GEMINI_API_KEY` in `.env` (see `.env.example`). The model is set via `GEMINI_MODEL` (default `gemini-2.5-flash`).
+Requires at least one AI provider key in `.env` — `GROQ_API_KEY`, `OPENROUTER_API_KEY`, or `GEMINI_API_KEY` (see `.env.example`). See [Provider routing](#provider-routing) for how the router picks and falls back between providers.
 
 ```
 npm run dev                    # run baseline + agent on one case (default case-01-demo)
 npm run dev -- cases/case-05-contradiction
 npm run eval                   # run + score both systems on all cases → results.json + comparison table
-npm run eval -- --force        # bypass the trajectory cache, re-run Gemini on every case
+npm run eval -- --force        # bypass the trajectory cache, re-run the LLM pipeline on every case
 npm run report:demo            # generate demo dossiers (verified + rejected) with NO API key
 npm run typecheck
 npm run build                  # compile src/ → dist/
@@ -267,14 +269,24 @@ For one case, `npm run dev` writes `report/<caseId>.baseline.html` and `report/<
 
 The pipeline order is: **investigator → contradiction (adversarial) → verifier**, with exactly **one** verifier-triggered retry of the investigator before the verdict is handed to the human reviewer.
 
+### Provider routing
+
+The AI layer is provider-independent (`src/lib/llm.ts`). `generateStructured` tries the configured providers in order — default **Groq → OpenRouter → Gemini** — and on failure (429 / network / unparseable / schema-invalid output) automatically falls back to the next one:
+
+- `AI_PROVIDER=auto` (default) uses every provider that has a key, in priority order. Set an explicit order, e.g. `AI_PROVIDER=openrouter,groq,gemini`.
+- `AI_FALLBACK=true` (default) enables the fallback; set `false` to only ever use the first configured provider.
+- Model IDs are env-configurable (`GROQ_MODEL`, `OPENROUTER_MODEL`, `GEMINI_MODEL`) since free-model catalogs change often.
+
+The eval harness records routing metrics — attempts, successes per provider, and how many calls needed a fallback — into `results.json` and prints them after the comparison table, so you can quantify the reliability win of fallback over a single provider.
+
 ### Free-tier quota handling
 
-Every Gemini call goes through two guards in `src/lib/`:
+Every AI call goes through the router with two guards in `src/lib/`:
 
 - **Rate limiter** (`rate-limit.ts`) — spaces calls to stay under your project's free-tier RPM cap. Default `13000ms` is safe for a 5 RPM cap; tune with `GEMINI_RATE_INTERVAL_MS` in `.env`.
-- **429 retry** (`gemini-retry.ts`) — retries quota-exceeded responses with capped exponential backoff (or the API's `Retry-After` header when exposed).
+- **429 retry** (`gemini-retry.ts`) — retries quota-exceeded responses with capped exponential backoff (or the API's `Retry-After` header when exposed) before the router considers a provider failed and falls back.
 
-**Eval caching.** The per-case trajectory files double as an eval cache: a case already present under `evidence/trajectories/` is reloaded instead of re-running Gemini, so the first benchmark consumes API quota but subsequent scoring runs do not. This is a deliberate engineering choice for reproducibility, not a workaround:
+**Eval caching.** The per-case trajectory files double as an eval cache: a case already present under `evidence/trajectories/` is reloaded instead of re-running the LLM pipeline, so the first benchmark consumes API quota but subsequent scoring runs do not. This is a deliberate engineering choice for reproducibility, not a workaround:
 
 > The eval runner caches completed agent trajectories. The initial benchmark requires model calls; subsequent scoring runs operate entirely on cached results and do not consume API quota.
 
@@ -292,7 +304,7 @@ A minimal Express wrapper (`src/server.ts`) lets judges **click a case and watch
 
 Run it locally with `npm run dev:server`, or compiled with `npm run build && npm run start:server`.
 
-`render.yaml` is a Render blueprint (build: `npm ci && npm run build`; start: `node dist/server.js`). Connect the repo as a **Blueprint**, then set the `GEMINI_API_KEY` secret in the Render dashboard — the key is never committed (`sync: false`). Use **`GEMINI_API_KEY`**, not `OPENAI_API_KEY`; TraceOS authenticates to Gemini via `GEMINI_API_KEY` in `src/lib/gemini.ts`.
+`render.yaml` is a Render blueprint (build: `npm ci && npm run build`; start: `node dist/server.js`). Connect the repo as a **Blueprint**, then set at least one provider key (`GROQ_API_KEY` / `OPENROUTER_API_KEY` / `GEMINI_API_KEY`) as a secret in the Render dashboard — keys are never committed (`sync: false`).
 
 Free-tier tradeoffs to know before demo day:
 
@@ -300,7 +312,7 @@ Free-tier tradeoffs to know before demo day:
 - Free-tier disk is **ephemeral** — runtime reports/trajectories vanish on redeploy. Regenerate them by clicking "Run investigation" again; nothing permanent is stored.
 - The CLI (the primary reproduction path in `REPRODUCTION.md`) keeps working alongside the server.
 
-Because the live pipeline is rate-limited (up to ~13s between Gemini calls, more on a rejection retry), a full case takes a while on the free tier — fine for a judge clicking at their own pace, less suited to a live sync narration.
+Because the live pipeline is rate-limited (up to ~13s between LLM calls, more on a rejection retry), a full case takes a while on the free tier — fine for a judge clicking at their own pace, less suited to a live sync narration.
 
 ---
 
