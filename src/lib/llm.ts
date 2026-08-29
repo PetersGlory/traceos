@@ -237,9 +237,19 @@ export async function generateStructured<T extends z.ZodTypeAny>(
       recordSuccess(provider.name);
 
       return validated;
-    } catch (err) {
+    }  catch (err) {
       lastError = err;
       const status = providerErrorStatus(err);
+      
+      const isValidationError = err instanceof z.ZodError || err instanceof SyntaxError; // JSON.parse or schema.parse failure
+
+      if (!isValidationError) {
+        recordFailure(provider.name); // only trip the breaker for real transport/quota issues
+      } else {
+        console.log(`⚠ Router: "${provider.name}" returned malformed output — not tripping breaker, treating as a one-off.`);
+      }
+
+      if (!allowFallback) throw err;
       // Quota/rate errors (429) ⇒ trip immediately; other transient/5xx also count.
       recordFailure(provider.name);
       if (!allowFallback) throw err;
