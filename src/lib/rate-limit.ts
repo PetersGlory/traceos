@@ -32,7 +32,7 @@ export async function waitForGeminiSlot(): Promise<void> {
 
   if (elapsed < minInterval) {
     const wait = minInterval - elapsed;
-    console.log(`⏳ Gemini rate limiter: waiting ${Math.ceil(wait / 1000)}s...`);
+    console.log(`⏳ Rate limiter: waiting ${Math.ceil(wait / 1000)}s to stay under free-tier RPM...`);
     await new Promise((resolve) => setTimeout(resolve, wait));
   }
 
@@ -48,7 +48,7 @@ export async function waitForRetryAfter(
   retryAfterSeconds: number,
 ): Promise<void> {
   const waitMs = Math.max(1_000, Math.ceil(retryAfterSeconds * 1_000));
-  console.log(`⏳ Gemini 429: waiting ${Math.ceil(waitMs / 1000)}s per Retry-After...`);
+  console.log(`⏳ Rate limiter: honoring Retry-After, waiting ${Math.ceil(waitMs / 1000)}s...`);
   await new Promise((resolve) => setTimeout(resolve, waitMs));
   lastRequestAt = Date.now();
 }

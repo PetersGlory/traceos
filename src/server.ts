@@ -178,11 +178,10 @@ function errorHtml(title: string, detail: string, backToIndex: boolean): string 
       <div class="error-panel">
         <pre>${escapeHtml(detail)}</pre>
       </div>
-      ${
-        backToIndex
-          ? '<a class="back" href="/">&larr; Back to cases</a>'
-          : ""
-      }
+      ${backToIndex
+      ? '<a class="back" href="/">&larr; Back to cases</a>'
+      : ""
+    }
     </div>
     <div class="footer">TraceOS &middot; evidence-driven dispute investigation</div>
   </div>
@@ -199,11 +198,10 @@ function indexHtml(cases: CaseMeta[]): string {
           <span class="case-num">${num}</span>
           <span class="case-body">
             <span class="case-name">${escapeHtml(c.caseId)}</span>
-            ${
-              c.difficult
-                ? '<span class="case-badge badge-hard">hard / ambiguous</span>'
-                : '<span class="case-badge">standard</span>'
-            }
+            ${c.difficult
+          ? '<span class="case-badge badge-hard">hard / ambiguous</span>'
+          : '<span class="case-badge">standard</span>'
+        }
             <span class="case-cta">Open investigation &rarr;</span>
           </span>
         </a>`;
@@ -489,34 +487,34 @@ async function runInvestigation(caseId: string): Promise<string> {
   if (baseline) {
     sheetBlocks.push(
       `<p class="sheet-title">Baseline &mdash; single-pass (no verifier)</p>` +
-        renderReportSheet({
-          caseId: loaded.caseId,
-          investigation: baseline,
-          verification: {
-            approved: true,
-            reasoning: "Baseline single-pass (no verifier).",
-            confidence: baseline.confidence,
-            unsupportedClaims: [],
-            missingEvidence: [],
-            contradictionErrors: [],
-          },
-          evidence: loaded.evidence,
-          timeline,
-        }),
+      renderReportSheet({
+        caseId: loaded.caseId,
+        investigation: baseline,
+        verification: {
+          approved: true,
+          reasoning: "Baseline single-pass (no verifier).",
+          confidence: baseline.confidence,
+          unsupportedClaims: [],
+          missingEvidence: [],
+          contradictionErrors: [],
+        },
+        evidence: loaded.evidence,
+        timeline,
+      }),
     );
   }
 
   if (agent) {
     sheetBlocks.push(
       `<p class="sheet-title">Agent &mdash; investigator &rarr; contradiction &rarr; verifier</p>` +
-        renderReportSheet({
-          caseId: loaded.caseId,
-          investigation: agent.investigation,
-          verification: agent.verification,
-          evidence: loaded.evidence,
-          timeline,
-          wasRetried: agent.wasRetried,
-        }),
+      renderReportSheet({
+        caseId: loaded.caseId,
+        investigation: agent.investigation,
+        verification: agent.verification,
+        evidence: loaded.evidence,
+        timeline,
+        wasRetried: agent.wasRetried,
+      }),
     );
   }
 
