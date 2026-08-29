@@ -54,7 +54,7 @@ function openrouterModel(): string {
   return env("OPENROUTER_MODEL") ?? "meta-llama/llama-3.2-3b-instruct:free";
 }
 
-type ProviderName = "groq" | "openrouter" | "gemini";
+type ProviderName = "groq" | "openrouter"; // | "gemini";
 
 interface ProviderSpec {
   name: ProviderName;
@@ -90,11 +90,11 @@ function configuredProviders(): ProviderSpec[] {
           jsonSchema,
         }),
     },
-    gemini: {
-      name: "gemini",
-      hasKey: hasGeminiKey(),
-      run: ({ prompt, jsonSchema }) => callGeminiJson({ prompt, jsonSchema }),
-    },
+    // gemini: {
+    //   name: "gemini",
+    //   hasKey: hasGeminiKey(),
+    //   run: ({ prompt, jsonSchema }) => callGeminiJson({ prompt, jsonSchema }),
+    // },
   };
 
   const requested = env("AI_PROVIDER");
@@ -103,10 +103,10 @@ function configuredProviders(): ProviderSpec[] {
     order = requested
       .split(",")
       .map((s) => s.trim().toLowerCase() as ProviderName)
-      .filter((p) => p === "groq" || p === "openrouter" || p === "gemini");
-    if (order.length === 0) order = ["groq", "openrouter", "gemini"];
+      .filter((p) => p === "groq" || p === "openrouter");
+    if (order.length === 0) order = ["groq", "openrouter"];
   } else {
-    order = ["groq", "openrouter", "gemini"];
+    order = ["groq", "openrouter"];
   }
 
   return order.map((name) => specs[name]).filter((s) => s.hasKey);
