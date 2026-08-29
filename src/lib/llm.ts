@@ -1,14 +1,19 @@
 /**
  * TraceOS AI router.
  *
- * Provider-independent structured-output generation with automatic fallback.
+ * Provider-independent structured-output generation with automatic fallback and
+ * per-provider circuit breaking.
  *
  *   generateStructured(schema, prompt)
  *
  * tries the configured providers in order (default Groq → OpenRouter → Gemini)
  * and, on failure (429 / network / empty / Zod-validation), falls back to the
- * next one. Every attempt is paced by the shared rate limiter and retried on
- * 429 with backoff.
+ * next one. Each attempt is paced by a per-provider rate limiter and retried on
+ * transient 429/5xx with backoff.
+ *
+ * Circuit breaker: a provider that keeps failing (especially an exhausted
+ * free-tier quota) is "tripped" for a short cooldown and skipped instantly on
+ * subsequent calls, so we don't waste minutes retrying a dead provider.
  *
  * Provider selection:
  *   AI_PROVIDER   "auto" (default) or an explicit comma-separated order,
@@ -23,8 +28,8 @@ import "dotenv/config";
 import { z } from "zod";
 import { callGeminiJson, hasGeminiKey } from "./gemini.js";
 import { callOpenAICompatible } from "./provider.js";
-import { waitForGeminiSlot } from "./rate-limit.js";
-import { withGeminiRetry } from "./gemini-retry.js";
+import { waitForSlot } from "./rate-limit.js";
+import { withGeminiRetry, providerErrorStatus, cleanErrorMessage } from "./gemini-retry.js";
 
 const GROQ_BASE = "https://api.groq.com/openai/v1";
 const OPENROUTER_BASE = "https://openrouter.ai/api/v1";
@@ -46,7 +51,7 @@ function groqModel(): string {
   return env("GROQ_MODEL") ?? "llama-3.3-70b-versatile";
 }
 function openrouterModel(): string {
-  return env("OPENROUTER_MODEL") ?? "meta-llama/llama-3.3-70b-instruct:free";
+  return env("OPENROUTER_MODEL") ?? "meta-llama/llama-3.2-3b-instruct:free";
 }
 
 type ProviderName = "groq" | "openrouter" | "gemini";
@@ -112,6 +117,7 @@ export interface ProviderStats {
   successes: Record<string, number>;
   fallbackEvents: number;
   totalCalls: number;
+  tripped: Record<string, number>;
 }
 
 const stats: ProviderStats = {
@@ -119,6 +125,7 @@ const stats: ProviderStats = {
   successes: {},
   fallbackEvents: 0,
   totalCalls: 0,
+  tripped: {},
 };
 
 /** Reset counters (e.g. at the start of an eval run). */
@@ -127,6 +134,7 @@ export function resetProviderStats(): void {
   stats.successes = {};
   stats.fallbackEvents = 0;
   stats.totalCalls = 0;
+  stats.tripped = {};
 }
 
 export function getProviderStats(): ProviderStats {
@@ -135,7 +143,45 @@ export function getProviderStats(): ProviderStats {
     successes: { ...stats.successes },
     fallbackEvents: stats.fallbackEvents,
     totalCalls: stats.totalCalls,
+    tripped: { ...stats.tripped },
   };
+}
+
+// --- Circuit breaker ---
+
+interface BreakerState {
+  failures: number;
+  openUntil: number;
+}
+
+const BREAK_THRESHOLD = 1;
+const COOLDOWN_MS = 90_000;
+
+const breakers = new Map<ProviderName, BreakerState>();
+
+function isTripped(name: ProviderName): boolean {
+  const b = breakers.get(name);
+  return b !== undefined && b.openUntil > Date.now();
+}
+
+function recordFailure(name: ProviderName): void {
+  const b = breakers.get(name) ?? { failures: 0, openUntil: 0 };
+  b.failures += 1;
+  if (b.failures >= BREAK_THRESHOLD) {
+    b.openUntil = Date.now() + COOLDOWN_MS;
+    stats.tripped[name] = (stats.tripped[name] ?? 0) + 1;
+    console.log(`⚠ Router: provider "${name}" tripped (cooldown ${COOLDOWN_MS / 1000}s) — will be skipped on next calls.`);
+  }
+  breakers.set(name, b);
+}
+
+function recordSuccess(name: ProviderName): void {
+  const b = breakers.get(name);
+  if (b) {
+    b.failures = 0;
+    b.openUntil = 0;
+    breakers.set(name, b);
+  }
 }
 
 /**
@@ -147,8 +193,8 @@ export async function generateStructured<T extends z.ZodTypeAny>(
   schema: T,
   prompt: string,
 ): Promise<z.infer<T>> {
-  const providers = configuredProviders();
-  if (providers.length === 0) {
+  const allProviders = configuredProviders();
+  if (allProviders.length === 0) {
     throw new Error(
       "No AI provider key configured. Set GROQ_API_KEY, OPENROUTER_API_KEY, or GEMINI_API_KEY in .env.",
     );
@@ -156,6 +202,13 @@ export async function generateStructured<T extends z.ZodTypeAny>(
 
   const jsonSchema = z.toJSONSchema(schema) as Record<string, unknown>;
   const allowFallback = env("AI_FALLBACK")?.toLowerCase() !== "false";
+
+  const providers = allProviders.filter((p) => !isTripped(p.name));
+  if (providers.length === 0) {
+    // Everyone is tripped; still allow the first configured provider so we don't
+    // silently fail, and report that the others are cooling down.
+    providers.push(allProviders[0]);
+  }
 
   let lastError: unknown = null;
 
@@ -167,10 +220,13 @@ export async function generateStructured<T extends z.ZodTypeAny>(
       const statsKey = provider.name;
       stats.attempts[statsKey] = (stats.attempts[statsKey] ?? 0) + 1;
 
-      const result = await withGeminiRetry(async () => {
-        await waitForGeminiSlot();
-        return provider.run({ prompt, jsonSchema });
-      });
+      const result = await withGeminiRetry(
+        async () => {
+          await waitForSlot(provider.name);
+          return provider.run({ prompt, jsonSchema });
+        },
+        { label: provider.name, maxRetries: 2 },
+      );
 
       const parsed: unknown = JSON.parse(result.text);
       const validated = schema.parse(parsed);
@@ -178,14 +234,27 @@ export async function generateStructured<T extends z.ZodTypeAny>(
       stats.totalCalls++;
       stats.successes[statsKey] = (stats.successes[statsKey] ?? 0) + 1;
       if (isFallback) stats.fallbackEvents++;
+      recordSuccess(provider.name);
 
       return validated;
     } catch (err) {
       lastError = err;
+      const status = providerErrorStatus(err);
+      // Quota/rate errors (429) ⇒ trip immediately; other transient/5xx also count.
+      recordFailure(provider.name);
       if (!allowFallback) throw err;
-      // Otherwise fall through to the next provider.
+      if (status === 429) {
+        console.log(`⚠ Router: "${provider.name}" hit a 429 — falling back to the next provider.`);
+      } else {
+        console.log(`⚠ Router: "${provider.name}" failed (${status ?? "unknown status"}) — falling back to the next provider.`);
+      }
+      // Fall through to the next provider.
     }
   }
 
-  throw lastError ?? new Error("All AI providers failed.");
+  throw new Error(
+    lastError !== null
+      ? cleanErrorMessage(lastError)
+      : "All AI providers failed.",
+  );
 }

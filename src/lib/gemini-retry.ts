@@ -41,6 +41,11 @@ function isRetryableStatus(status: number | undefined): boolean {
   return status === 429 || (status !== undefined && status >= 500 && status < 600);
 }
 
+/** Exported so the router can decide when to trip a provider's circuit breaker. */
+export function providerErrorStatus(err: unknown): number | undefined {
+  return errorStatus(err);
+}
+
 /**
  * Turn an SDK error into a clean, human-readable message.
  *
@@ -90,11 +95,15 @@ function retryAfterSeconds(err: unknown): number | undefined {
  * Runs `fn`, retrying on transient transport errors (429, 5xx) with capped
  * exponential backoff (or Retry-After). All other errors are thrown immediately.
  * After exhausting retries, throws a clean human-readable message.
+ *
+ * `label` is the provider name, used only for log messages / Retry-After pacing.
  */
 export async function withGeminiRetry<T>(
   fn: () => Promise<T>,
-  maxRetries = DEFAULT_MAX_RETRIES,
+  opts: { label?: string; maxRetries?: number } = {},
 ): Promise<T> {
+  const label = opts.label ?? "gemini";
+  const maxRetries = opts.maxRetries ?? DEFAULT_MAX_RETRIES;
   let attempt = 0;
 
   for (;;) {
@@ -112,7 +121,7 @@ export async function withGeminiRetry<T>(
 
       const retryAfter = retryAfterSeconds(err);
       if (retryAfter !== undefined) {
-        await waitForRetryAfter(retryAfter);
+        await waitForRetryAfter(label, retryAfter);
       } else {
         const delay = Math.min(MAX_DELAY_MS, BASE_DELAY_MS * 2 ** attempt);
         console.log(`⚠ LLM transport hit (status ${status}). Retrying in ${delay / 1000}s...`);
