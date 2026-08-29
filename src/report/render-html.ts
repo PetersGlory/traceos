@@ -1,13 +1,19 @@
 /**
  * Renders a single investigation into a static, self-contained HTML report.
  *
- * No server, no client-JS dependencies beyond a native <details> toggle. The
- * output is meant to be written to disk per case (`report/<case-id>.html`) and
- * opened directly in a browser, or screen-recorded for the demo video.
+ * The output is split into reusable pieces so both use cases stay proper,
+ * single-document HTML:
  *
- * Design intent: a case file / evidence dossier, not a dashboard. Once
- * investigate.ts returns real data, generating a report is one call:
- *   fs.writeFileSync(`report/${caseId}.html`, renderHtmlReport({ ... }));
+ *   - `renderHtmlReport(...)`  → a complete, self-contained HTML file. Used by
+ *     the CLI/demo bootstrap to write `report/<case-id>.html` to disk and
+ *     opened directly in a browser or screen-recorded for the demo video.
+ *   - `reportStyleHtml`        → the shared <style> block.
+ *   - `renderReportSheet(...)` → the report's <div class="sheet"> body only.
+ *     The web service uses these two to stack the baseline + agent sheets
+ *     inside one shared document head, instead of concatenating two full
+ *     <html> documents.
+ *
+ * Design intent: a case file / evidence dossier, not a dashboard.
  *
  * Rejected/retry handling: when `verification.approved` is false the stamp flips
  * to REJECTED (red), `verification.correctedConclusion` replaces the displayed
@@ -45,107 +51,12 @@ function evidenceById(
   return evidence.find((e) => e.id === id);
 }
 
-export function renderHtmlReport(input: RenderReportInput): string {
-  const {
-    caseId,
-    investigation,
-    verification,
-    evidence,
-    timeline,
-    wasRetried,
-  } = input;
-
-  const stampText = verification.approved ? "VERIFIED" : "REJECTED";
-  const stampClass = verification.approved
-    ? "stamp-verified"
-    : "stamp-rejected";
-
-  const confidencePct = Math.round(investigation.confidence * 100);
-  const verifierConfidencePct = Math.round(verification.confidence * 100);
-
-  const displayedConclusion = verification.approved
-    ? investigation.conclusion
-    : verification.correctedConclusion || investigation.conclusion;
-
-  const findingsHtml = investigation.findings
-    .map((f) => `<li>${escapeHtml(f)}</li>`)
-    .join("\n");
-
-  const contradictionsHtml = investigation.contradictions.length
-    ? investigation.contradictions
-        .map((c) => `<li class="tag tag-alert">${escapeHtml(c)}</li>`)
-        .join("\n")
-    : `<li class="tag tag-quiet">No contradictions surfaced</li>`;
-
-  const supportingEvidenceHtml = investigation.supportingEvidenceIds
-    .map((id) => {
-      const item = evidenceById(evidence, id);
-      if (!item) return "";
-      return `
-        <div class="evidence-stub">
-          <span class="evidence-id">${escapeHtml(item.id)}</span>
-          <span class="evidence-type">${escapeHtml(item.type)}</span>
-          <span class="evidence-statement">${escapeHtml(item.statement)}</span>
-          <span class="evidence-source">source: ${escapeHtml(item.source)}</span>
-        </div>`;
-    })
-    .join("\n");
-
-  const timelineHtml = timeline
-    .map(
-      (t) => `
-      <div class="timeline-row importance-${t.importance}">
-        <span class="timeline-ts">${escapeHtml(t.timestamp)}</span>
-        <span class="timeline-event">${escapeHtml(t.event)}</span>
-        <span class="timeline-ref">${escapeHtml(t.evidenceId)}</span>
-      </div>`,
-    )
-    .join("\n");
-
-  const unresolvedHtml = investigation.unresolvedQuestions.length
-    ? `<ul>${investigation.unresolvedQuestions
-        .map((q) => `<li>${escapeHtml(q)}</li>`)
-        .join("")}</ul>`
-    : `<p class="muted">None noted.</p>`;
-
-  const verifierIssuesHtml = !verification.approved
-    ? `
-      <div class="verifier-panel">
-        <h3>Verifier objections</h3>
-        ${
-          verification.unsupportedClaims.length
-            ? `<p class="label">Unsupported claims</p><ul>${verification.unsupportedClaims
-                .map((c) => `<li>${escapeHtml(c)}</li>`)
-                .join("")}</ul>`
-            : ""
-        }
-        ${
-          verification.missingEvidence.length
-            ? `<p class="label">Missing evidence</p><ul>${verification.missingEvidence
-                .map((c) => `<li>${escapeHtml(c)}</li>`)
-                .join("")}</ul>`
-            : ""
-        }
-        ${
-          verification.contradictionErrors.length
-            ? `<p class="label">Contradiction errors</p><ul>${verification.contradictionErrors
-                .map((c) => `<li>${escapeHtml(c)}</li>`)
-                .join("")}</ul>`
-            : ""
-        }
-      </div>`
-    : "";
-
-  return `<!DOCTYPE html>
-<html lang="en">
-<head>
-<meta charset="UTF-8" />
-<meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<title>TraceOS — Case ${escapeHtml(caseId)}</title>
-<link rel="preconnect" href="https://fonts.googleapis.com">
+const FONT_LINKS = `<link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;700&family=Public+Sans:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
-<style>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;700&family=Public+Sans:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">`;
+
+/** Shared stylesheet for TraceOS report sheets. */
+export const reportStyleHtml = `<style>
   :root {
     --paper: #E9E4D8;
     --paper-raised: #F2EEE3;
@@ -172,12 +83,29 @@ export function renderHtmlReport(input: RenderReportInput): string {
     line-height: 1.5;
   }
 
+  .report-stack {
+    max-width: 780px;
+    margin: 0 auto;
+    display: flex;
+    flex-direction: column;
+    gap: 40px;
+  }
+
+  .report-stack .sheet-title {
+    font-family: "JetBrains Mono", monospace;
+    font-size: 11px;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--ink-soft);
+    margin: 0 0 8px;
+    text-align: center;
+  }
+
   .sheet {
     max-width: 780px;
     margin: 0 auto;
     background: var(--paper-raised);
     border: 1px solid var(--line);
-    position: relative;
     box-shadow: 0 1px 0 var(--line);
   }
 
@@ -186,8 +114,18 @@ export function renderHtmlReport(input: RenderReportInput): string {
     border-bottom: 2px solid var(--ink);
     display: flex;
     justify-content: space-between;
-    align-items: flex-start;
+    align-items: center;
+    gap: 24px;
     position: relative;
+  }
+
+  .header > div:last-child {
+    text-align: right;
+    flex-shrink: 0;
+  }
+
+  .header .stamp {
+    display: inline-block;
   }
 
   .header .eyebrow {
@@ -430,10 +368,101 @@ export function renderHtmlReport(input: RenderReportInput): string {
     text-align: center;
     letter-spacing: 0.04em;
   }
-</style>
-</head>
-<body>
-  <div class="sheet">
+</style>`;
+
+/** Render just the report's `.sheet` body (no <html>/<head>). */
+export function renderReportSheet(input: RenderReportInput): string {
+  const {
+    caseId,
+    investigation,
+    verification,
+    evidence,
+    timeline,
+    wasRetried,
+  } = input;
+
+  const stampText = verification.approved ? "VERIFIED" : "REJECTED";
+  const stampClass = verification.approved
+    ? "stamp-verified"
+    : "stamp-rejected";
+
+  const confidencePct = Math.round(investigation.confidence * 100);
+  const verifierConfidencePct = Math.round(verification.confidence * 100);
+
+  const displayedConclusion = verification.approved
+    ? investigation.conclusion
+    : verification.correctedConclusion || investigation.conclusion;
+
+  const findingsHtml = investigation.findings
+    .map((f) => `<li>${escapeHtml(f)}</li>`)
+    .join("\n");
+
+  const contradictionsHtml = investigation.contradictions.length
+    ? investigation.contradictions
+        .map((c) => `<li class="tag tag-alert">${escapeHtml(c)}</li>`)
+        .join("\n")
+    : `<li class="tag tag-quiet">No contradictions surfaced</li>`;
+
+  const supportingEvidenceHtml = investigation.supportingEvidenceIds
+    .map((id) => {
+      const item = evidenceById(evidence, id);
+      if (!item) return "";
+      return `
+        <div class="evidence-stub">
+          <span class="evidence-id">${escapeHtml(item.id)}</span>
+          <span class="evidence-type">${escapeHtml(item.type)}</span>
+          <span class="evidence-statement">${escapeHtml(item.statement)}</span>
+          <span class="evidence-source">source: ${escapeHtml(item.source)}</span>
+        </div>`;
+    })
+    .join("\n");
+
+  const timelineHtml = timeline
+    .map(
+      (t) => `
+      <div class="timeline-row importance-${t.importance}">
+        <span class="timeline-ts">${escapeHtml(t.timestamp)}</span>
+        <span class="timeline-event">${escapeHtml(t.event)}</span>
+        <span class="timeline-ref">${escapeHtml(t.evidenceId)}</span>
+      </div>`,
+    )
+    .join("\n");
+
+  const unresolvedHtml = investigation.unresolvedQuestions.length
+    ? `<ul>${investigation.unresolvedQuestions
+        .map((q) => `<li>${escapeHtml(q)}</li>`)
+        .join("")}</ul>`
+    : `<p class="muted">None noted.</p>`;
+
+  const verifierIssuesHtml = !verification.approved
+    ? `
+      <div class="verifier-panel">
+        <h3>Verifier objections</h3>
+        ${
+          verification.unsupportedClaims.length
+            ? `<p class="label">Unsupported claims</p><ul>${verification.unsupportedClaims
+                .map((c) => `<li>${escapeHtml(c)}</li>`)
+                .join("")}</ul>`
+            : ""
+        }
+        ${
+          verification.missingEvidence.length
+            ? `<p class="label">Missing evidence</p><ul>${verification.missingEvidence
+                .map((c) => `<li>${escapeHtml(c)}</li>`)
+                .join("")}</ul>`
+            : ""
+        }
+        ${
+          verification.contradictionErrors.length
+            ? `<p class="label">Contradiction errors</p><ul>${verification.contradictionErrors
+                .map((c) => `<li>${escapeHtml(c)}</li>`)
+                .join("")}</ul>`
+            : ""
+        }
+      </div>`
+    : "";
+
+  return `<div class="sheet">
     <div class="header">
       <div>
         <p class="eyebrow">TraceOS Investigation Report</p>
@@ -495,7 +524,23 @@ export function renderHtmlReport(input: RenderReportInput): string {
     <div class="footer">
       Generated by TraceOS &middot; recommendation only &middot; requires human analyst sign-off before action is taken
     </div>
-  </div>
+  </div>`;
+}
+
+/** A complete, self-contained HTML file for a single report (for disk output). */
+export function renderHtmlReport(input: RenderReportInput): string {
+  const sheet = renderReportSheet(input);
+  return `<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>TraceOS — Case ${escapeHtml(input.caseId)}</title>
+${FONT_LINKS}
+${reportStyleHtml}
+</head>
+<body>
+  ${sheet}
 </body>
 </html>`;
 }
